@@ -1,0 +1,26 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.1.0
+    hooks:
+      - id: check-toml
+      - id: check-yaml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+
+  - repo: local
+    hooks:
+      - id: rust-fmt
+        name: Rust Format
+        pass_filenames: false
+        language: system
+        entry: make fmt
+      - id: rust-fix
+        name: Rust Fix
+        pass_filenames: false
+        language: system
+        entry: cargo fix --allow-staged --allow-dirty
+      - id: rust-docs
+        name: Rust Doc Generation Check
+        pass_filenames: false
+        language: system
+        entry: make docs
