@@ -7,6 +7,7 @@ pub struct NpmDependencyRetriever {}
 #[derive(Clone, PartialEq, Debug)]
 pub struct NpmDependency {
     pub name: String,
+    pub version: String,
 }
 
 impl NpmDependencyRetriever {
@@ -16,12 +17,21 @@ impl NpmDependencyRetriever {
     {
         let result: Value = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
         if let Object(dependencies) = &result["dependencies"] {
-            Ok(dependencies
-                .keys()
-                .map(|key| NpmDependency { name: key.into() })
-                .collect())
+            dependencies
+                .iter()
+                .map(|(key, value)| {
+                    if let Some(version) = value["version"].as_str() {
+                        Ok(NpmDependency {
+                            name: key.into(),
+                            version: version.to_string(),
+                        })
+                    } else {
+                        Err("version not found in map".to_string())
+                    }
+                })
+                .collect()
         } else {
-            Err("nono".into())
+            Err("dependencies not found".into())
         }
     }
 }

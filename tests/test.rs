@@ -1,7 +1,7 @@
 use dean::{NpmDependency, NpmDependencyRetriever};
 use expects::equal::be_ok;
 
-use expects::iter::contain_element;
+use expects::iter::{consist_of, contain_element};
 use expects::Subject;
 use rspec::{describe, run};
 
@@ -15,9 +15,16 @@ fn test() {
                 let dependencies =
                     dependency_retriever.retrieve_from_reader(npm_package_lock().as_bytes());
 
-                dependencies.should(be_ok(contain_element(NpmDependency {
-                    name: "colors".into(),
-                })));
+                dependencies.should(be_ok(consist_of(&[
+                    NpmDependency {
+                        name: "colors".into(),
+                        version: "1.4.0".into(),
+                    },
+                    NpmDependency {
+                        name: "faker".into(),
+                        version: "5.5.3".into(),
+                    },
+                ])));
             });
         })
     }))
