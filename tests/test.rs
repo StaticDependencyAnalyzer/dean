@@ -1,28 +1,48 @@
-use dean::{NpmDependency, NpmDependencyRetriever};
+use dean::{NpmDependency, NpmDependencyReader, NpmInfoRetriever};
 use expects::equal::be_ok;
-
-use expects::iter::{consist_of, contain_element};
+use expects::iter::consist_of;
 use expects::Subject;
+use mockall::mock;
+use mockall::predicate::eq;
 use rspec::{describe, run};
+
+mock! {
+    Retriever{}
+    impl NpmInfoRetriever for Retriever{
+        fn latest_version(&self, package_name: &str) -> Result<String, String>;
+    }
+}
 
 #[test]
 fn test() {
     run(&describe("NPM Dependency Retriever", false, |c| {
         c.when("retrieving the dependencies of a project", |c| {
             c.it("retrieves all the dependencies", |_c| {
-                let dependency_retriever = NpmDependencyRetriever::new();
+                let mut retriever = Box::new(MockRetriever::new());
+                retriever
+                    .expect_latest_version()
+                    .with(eq("colors"))
+                    .return_once(|_| Ok("1.4.1".into()));
+                retriever
+                    .expect_latest_version()
+                    .with(eq("faker"))
+                    .return_once(|_| Ok("5.5.3".into()));
+
+                let dependency_reader = NpmDependencyReader::new(retriever);
 
                 let dependencies =
-                    dependency_retriever.retrieve_from_reader(npm_package_lock().as_bytes());
+                    dependency_reader.retrieve_from_reader(npm_package_lock().as_bytes());
 
                 dependencies.should(be_ok(consist_of(&[
                     NpmDependency {
                         name: "colors".into(),
                         version: "1.4.0".into(),
+                        latest_version: "1.4.1".into(),
                     },
                     NpmDependency {
                         name: "faker".into(),
                         version: "5.5.3".into(),
+                        latest_version: "5.5.3".into(),
                     },
                 ])));
             });

@@ -1,16 +1,22 @@
 use serde_json::Value;
 use serde_json::Value::Object;
 
-#[derive(Default)]
-pub struct NpmDependencyRetriever {}
+pub trait NpmInfoRetriever {
+    fn latest_version(&self, package_name: &str) -> Result<String, String>;
+}
+
+pub struct NpmDependencyReader {
+    npm_info_retriever: Box<dyn NpmInfoRetriever>,
+}
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct NpmDependency {
     pub name: String,
     pub version: String,
+    pub latest_version: String,
 }
 
-impl NpmDependencyRetriever {
+impl NpmDependencyReader {
     pub fn retrieve_from_reader<T>(&self, reader: T) -> Result<Vec<NpmDependency>, String>
     where
         T: std::io::Read,
@@ -19,12 +25,9 @@ impl NpmDependencyRetriever {
         if let Object(dependencies) = &result["dependencies"] {
             dependencies
                 .iter()
-                .map(|(key, value)| {
+                .map(|(name, value)| {
                     if let Some(version) = value["version"].as_str() {
-                        Ok(NpmDependency {
-                            name: key.into(),
-                            version: version.to_string(),
-                        })
+                        self.get_dependency_info(name, version)
                     } else {
                         Err("version not found in map".to_string())
                     }
@@ -34,10 +37,21 @@ impl NpmDependencyRetriever {
             Err("dependencies not found".into())
         }
     }
+
+    fn get_dependency_info(&self, name: &str, version: &str) -> Result<NpmDependency, String> {
+        let latest_version = self.npm_info_retriever.latest_version(name)?;
+        Ok(NpmDependency {
+            name: name.into(),
+            version: version.into(),
+            latest_version,
+        })
+    }
 }
 
-impl NpmDependencyRetriever {
-    pub fn new() -> Self {
-        NpmDependencyRetriever {}
+impl NpmDependencyReader {
+    pub fn new(retriever: Box<dyn NpmInfoRetriever>) -> Self {
+        NpmDependencyReader {
+            npm_info_retriever: retriever,
+        }
     }
 }
