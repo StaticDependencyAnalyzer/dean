@@ -1,4 +1,4 @@
-use dean::{NpmDependency, NpmDependencyReader, NpmInfoRetriever};
+use dean::npm;
 use expects::equal::be_ok;
 use expects::iter::consist_of;
 use expects::Subject;
@@ -8,7 +8,7 @@ use rspec::{describe, run};
 
 mock! {
     Retriever{}
-    impl NpmInfoRetriever for Retriever{
+    impl npm::InfoRetriever for Retriever{
         fn latest_version(&self, package_name: &str) -> Result<String, String>;
     }
 }
@@ -28,18 +28,18 @@ fn test() {
                     .with(eq("faker"))
                     .return_once(|_| Ok("5.5.3".into()));
 
-                let dependency_reader = NpmDependencyReader::new(retriever);
+                let dependency_reader = npm::DependencyReader::new(retriever);
 
                 let dependencies =
                     dependency_reader.retrieve_from_reader(npm_package_lock().as_bytes());
 
                 dependencies.should(be_ok(consist_of(&[
-                    NpmDependency {
+                    npm::Dependency {
                         name: "colors".into(),
                         version: "1.4.0".into(),
                         latest_version: "1.4.1".into(),
                     },
-                    NpmDependency {
+                    npm::Dependency {
                         name: "faker".into(),
                         version: "5.5.3".into(),
                         latest_version: "5.5.3".into(),
