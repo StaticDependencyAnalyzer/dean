@@ -1,8 +1,15 @@
 use serde_json::Value;
 use serde_json::Value::Object;
 
+#[derive(Clone, PartialEq, Debug)]
+pub enum Repository {
+    GitHub { organization: String, name: String },
+}
+
+#[cfg_attr(test, mockall::automock)]
 pub trait InfoRetriever {
     fn latest_version(&self, package_name: &str) -> Result<String, String>;
+    fn repository(&self, package_name: &str) -> Result<Repository, String>;
 }
 
 pub struct DependencyReader {
@@ -14,6 +21,7 @@ pub struct Dependency {
     pub name: String,
     pub version: String,
     pub latest_version: String,
+    pub repository: Repository,
 }
 
 impl DependencyReader {
@@ -39,11 +47,11 @@ impl DependencyReader {
     }
 
     fn get_dependency_info(&self, name: &str, version: &str) -> Result<Dependency, String> {
-        let latest_version = self.npm_info_retriever.latest_version(name)?;
         Ok(Dependency {
             name: name.into(),
             version: version.into(),
-            latest_version,
+            latest_version: self.npm_info_retriever.latest_version(name)?,
+            repository: self.npm_info_retriever.repository(name)?,
         })
     }
 }
@@ -53,5 +61,90 @@ impl DependencyReader {
         DependencyReader {
             npm_info_retriever: retriever,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use expects::{equal::be_ok, iter::consist_of, Subject};
+    use mockall::predicate::eq;
+    use rspec::{describe, run};
+
+    #[test]
+    fn npm() {
+        run(&describe("NPM Dependency Retriever", false, |c| {
+            c.when("retrieving the dependencies of a project", |c| {
+                c.it("retrieves all the dependencies", |_c| {
+                    let mut retriever = Box::new(MockInfoRetriever::new());
+                    retriever
+                        .expect_latest_version()
+                        .with(eq("colors"))
+                        .return_once(|_| Ok("1.4.1".into()))
+                        .times(1);
+                    retriever
+                        .expect_repository()
+                        .with(eq("colors"))
+                        .return_once(|_| {
+                            Ok(Repository::GitHub {
+                                organization: "org".into(),
+                                name: "name".into(),
+                            })
+                        })
+                        .times(1);
+                    let dependency_reader = DependencyReader::new(retriever);
+
+                    let dependencies =
+                        dependency_reader.retrieve_from_reader(npm_package_lock().as_bytes());
+
+                    dependencies.should(be_ok(consist_of(&[Dependency {
+                        name: "colors".into(),
+                        version: "1.4.0".into(),
+                        latest_version: "1.4.1".into(),
+                        repository: Repository::GitHub {
+                            organization: "org".into(),
+                            name: "name".into(),
+                        },
+                    }])));
+                });
+            })
+        }))
+    }
+
+    fn npm_package_lock() -> String {
+        String::from(
+            r#"{
+  "name": "foo",
+  "version": "1.0.0",
+  "lockfileVersion": 2,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "foo",
+      "version": "1.0.0",
+      "license": "ISC",
+      "dependencies": {
+        "colors": "^1.4.0",
+        "faker": "^5.5.3"
+      }
+    },
+    "node_modules/colors": {
+      "version": "1.4.0",
+      "resolved": "https://registry.npmjs.org/colors/-/colors-1.4.0.tgz",
+      "integrity": "sha512-a+UqTh4kgZg/SlGvfbzDHpgRu7AAQOmmqRHJnxhRZICKFUT91brVhNNt58CMWU9PsBbv3PDCZUHbVxuDiH2mtA==",
+      "engines": {
+        "node": ">=0.1.90"
+      }
+    }
+  },
+  "dependencies": {
+    "colors": {
+      "version": "1.4.0",
+      "resolved": "https://registry.npmjs.org/colors/-/colors-1.4.0.tgz",
+      "integrity": "sha512-a+UqTh4kgZg/SlGvfbzDHpgRu7AAQOmmqRHJnxhRZICKFUT91brVhNNt58CMWU9PsBbv3PDCZUHbVxuDiH2mtA=="
+    }
+  }
+}"#,
+        )
     }
 }
