@@ -8,7 +8,7 @@ fmt:
 	cargo fmt
 
 fix:
-	cargo fix
+	cargo fix --allow-dirty --allow-staged
 
 docs:
 	cargo doc

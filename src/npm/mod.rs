@@ -69,46 +69,38 @@ mod tests {
     use super::*;
     use expects::{equal::be_ok, iter::consist_of, Subject};
     use mockall::predicate::eq;
-    use rspec::{describe, run};
 
     #[test]
-    fn npm() {
-        run(&describe("NPM Dependency Retriever", false, |c| {
-            c.when("retrieving the dependencies of a project", |c| {
-                c.it("retrieves all the dependencies", |_c| {
-                    let mut retriever = Box::new(MockInfoRetriever::new());
-                    retriever
-                        .expect_latest_version()
-                        .with(eq("colors"))
-                        .return_once(|_| Ok("1.4.1".into()))
-                        .times(1);
-                    retriever
-                        .expect_repository()
-                        .with(eq("colors"))
-                        .return_once(|_| {
-                            Ok(Repository::GitHub {
-                                organization: "org".into(),
-                                name: "name".into(),
-                            })
-                        })
-                        .times(1);
-                    let dependency_reader = DependencyReader::new(retriever);
-
-                    let dependencies =
-                        dependency_reader.retrieve_from_reader(npm_package_lock().as_bytes());
-
-                    dependencies.should(be_ok(consist_of(&[Dependency {
-                        name: "colors".into(),
-                        version: "1.4.0".into(),
-                        latest_version: "1.4.1".into(),
-                        repository: Repository::GitHub {
-                            organization: "org".into(),
-                            name: "name".into(),
-                        },
-                    }])));
-                });
+    fn retrieves_all_dependencies() {
+        let mut retriever = Box::new(MockInfoRetriever::new());
+        retriever
+            .expect_latest_version()
+            .with(eq("colors"))
+            .return_once(|_| Ok("1.4.1".into()))
+            .times(1);
+        retriever
+            .expect_repository()
+            .with(eq("colors"))
+            .return_once(|_| {
+                Ok(Repository::GitHub {
+                    organization: "org".into(),
+                    name: "name".into(),
+                })
             })
-        }))
+            .times(1);
+        let dependency_reader = DependencyReader::new(retriever);
+
+        let dependencies = dependency_reader.retrieve_from_reader(npm_package_lock().as_bytes());
+
+        dependencies.should(be_ok(consist_of(&[Dependency {
+            name: "colors".into(),
+            version: "1.4.0".into(),
+            latest_version: "1.4.1".into(),
+            repository: Repository::GitHub {
+                organization: "org".into(),
+                name: "name".into(),
+            },
+        }])));
     }
 
     fn npm_package_lock() -> String {
