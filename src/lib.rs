@@ -1,1 +1,1 @@
-pub mod npm;
+pub(crate) mod npm;
