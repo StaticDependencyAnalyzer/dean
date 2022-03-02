@@ -1,3 +1,9 @@
+mod cmd;
+mod pkg;
+
+use cmd::parse_args;
+
 fn main() {
-    println!("Hello, world!");
+    let args = parse_args();
+    println!("{:?}", args);
 }
