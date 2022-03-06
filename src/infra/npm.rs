@@ -10,7 +10,7 @@ impl Default for DependencyInfoRetriever {
     fn default() -> Self {
         DependencyInfoRetriever {
             github_registry_regex: Regex::new(
-                ".*?github.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git)",
+                ".*?github.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)",
             )
             .unwrap(),
         }
@@ -36,9 +36,9 @@ impl InfoRetriever for DependencyInfoRetriever {
             .map_err(|err| err.to_string())?;
 
         let json: Value = response.into_json().map_err(|err| err.to_string())?;
-        let repository = json["homepage"]
+        let repository = json["repository"]["url"]
             .as_str()
-            .ok_or("homepage is not a string")?
+            .ok_or("repository url is not a string")?
             .to_string();
 
         return if self.github_registry_regex.is_match(&repository) {
@@ -52,7 +52,7 @@ impl InfoRetriever for DependencyInfoRetriever {
                 name: captures["name"].to_string(),
             })
         } else {
-            Err("no repository matched".into())
+            Err(format!("no repository matched for {}", &repository))
         };
     }
 }
@@ -83,5 +83,17 @@ mod tests {
             organization: "Marak".into(),
             name: "colors.js".into(),
         })));
+    }
+
+    #[test]
+    fn retrieves_the_repository_of_babel() {
+        let retriever = DependencyInfoRetriever::default();
+
+        let result = retriever.repository("babel");
+
+        result.should(be_ok(equal(Repository::GitHub {
+            organization: "babel".into(),
+            name: "babel".into(),
+        })))
     }
 }

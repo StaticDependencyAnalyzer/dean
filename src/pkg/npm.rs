@@ -42,7 +42,7 @@ impl DependencyReader {
                 })
                 .collect()
         } else {
-            Err("dependencies not found".into())
+            Err("dependencies not found in lock file".into())
         }
     }
 
