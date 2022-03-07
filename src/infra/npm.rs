@@ -47,7 +47,7 @@ impl InfoRetriever for DependencyInfoRetriever {
         let repository = response["repository"]["url"]
             .as_str()
             .or_else(|| response["homepage"].as_str())
-            .and_then(|str| Some(str.to_string()));
+            .map(|str| str.to_string());
 
         if repository.is_none() {
             return Ok(Repository::Unknown);
@@ -55,11 +55,11 @@ impl InfoRetriever for DependencyInfoRetriever {
 
         return if self
             .github_registry_regex
-            .is_match(&repository.as_ref().unwrap())
+            .is_match(repository.as_ref().unwrap())
         {
             let captures = self
                 .github_registry_regex
-                .captures(&repository.as_ref().unwrap())
+                .captures(repository.as_ref().unwrap())
                 .ok_or_else(|| {
                     format!(
                         "repository '{}' does not match expression",
@@ -73,11 +73,11 @@ impl InfoRetriever for DependencyInfoRetriever {
             })
         } else if self
             .gitlab_registry_regex
-            .is_match(&repository.as_ref().unwrap())
+            .is_match(repository.as_ref().unwrap())
         {
             let captures = self
                 .gitlab_registry_regex
-                .captures(&repository.as_ref().unwrap())
+                .captures(repository.as_ref().unwrap())
                 .ok_or_else(|| {
                     format!(
                         "repository '{}' does not match expression",
