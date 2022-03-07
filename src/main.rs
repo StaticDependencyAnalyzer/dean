@@ -19,12 +19,19 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
 
     reader.retrieve_from_reader(file).map(|x| {
-        for dep in x {
+        x.iter().for_each(|dep| {
             println!(
-                "{}: {} (latest: {})",
-                dep.name, dep.version, dep.latest_version
+                "{}: {} ({} latest: {})",
+                dep.name,
+                dep.version,
+                if dep.version == dep.latest_version {
+                    "✅"
+                } else {
+                    "️⚠️"
+                },
+                dep.latest_version,
             );
-        }
+        });
     })?;
 
     Ok(())

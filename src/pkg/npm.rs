@@ -1,10 +1,14 @@
+use rayon::prelude::*;
 use serde_json::Value;
 use serde_json::Value::Object;
+use std::sync::{Arc, RwLock};
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum Repository {
+    Unknown,
     GitHub { organization: String, name: String },
     GitLab { organization: String, name: String },
+    Raw { address: String },
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -14,7 +18,7 @@ pub trait InfoRetriever {
 }
 
 pub struct DependencyReader {
-    npm_info_retriever: Box<dyn InfoRetriever>,
+    npm_info_retriever: Arc<RwLock<Box<dyn InfoRetriever + Send + Sync>>>,
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -32,11 +36,21 @@ impl DependencyReader {
     {
         let result: Value = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
         if let Object(dependencies) = &result["dependencies"] {
-            dependencies
-                .iter()
-                .map(|(name, value)| {
-                    if let Some(version) = value["version"].as_str() {
-                        self.get_dependency_info(name, version)
+            let deps: Vec<_> = dependencies
+                .into_iter()
+                .map(|(name, value)| (name, value["version"].as_str().map(|s| s.to_string())))
+                .collect();
+
+            deps.into_par_iter()
+                .map(|(name, version)| {
+                    let retriever = self.npm_info_retriever.clone();
+                    if let Some(version) = version {
+                        Ok(Dependency {
+                            name: name.into(),
+                            version,
+                            latest_version: retriever.read().unwrap().latest_version(name)?,
+                            repository: retriever.read().unwrap().repository(name)?,
+                        })
                     } else {
                         Err("version not found in map".to_string())
                     }
@@ -46,21 +60,12 @@ impl DependencyReader {
             Err("dependencies not found in lock file".into())
         }
     }
-
-    fn get_dependency_info(&self, name: &str, version: &str) -> Result<Dependency, String> {
-        Ok(Dependency {
-            name: name.into(),
-            version: version.into(),
-            latest_version: self.npm_info_retriever.latest_version(name)?,
-            repository: self.npm_info_retriever.repository(name)?,
-        })
-    }
 }
 
 impl DependencyReader {
-    pub fn new(retriever: Box<dyn InfoRetriever>) -> Self {
+    pub fn new(retriever: Box<dyn InfoRetriever + Send + Sync>) -> Self {
         DependencyReader {
-            npm_info_retriever: retriever,
+            npm_info_retriever: Arc::new(RwLock::new(retriever)),
         }
     }
 }
