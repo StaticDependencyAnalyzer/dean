@@ -1,16 +1,24 @@
+use crate::infra::http;
 use crate::pkg::npm::{InfoRetriever, Repository};
 use regex::Regex;
 use serde_json::Value;
 
 pub struct DependencyInfoRetriever {
-    pub github_registry_regex: Regex,
+    client: http::Client,
+    github_registry_regex: Regex,
+    gitlab_registry_regex: Regex,
 }
 
 impl Default for DependencyInfoRetriever {
     fn default() -> Self {
         DependencyInfoRetriever {
+            client: http::Client::new(),
             github_registry_regex: Regex::new(
                 ".*?github.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)",
+            )
+            .unwrap(),
+            gitlab_registry_regex: Regex::new(
+                ".*?gitlab.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)",
             )
             .unwrap(),
         }
@@ -19,24 +27,24 @@ impl Default for DependencyInfoRetriever {
 
 impl InfoRetriever for DependencyInfoRetriever {
     fn latest_version(&self, package_name: &str) -> Result<String, String> {
-        let response = ureq::get(format!("https://registry.npmjs.org/{}", package_name).as_str())
-            .call()
-            .map_err(|err| err.to_string())?;
+        let response: Value = self
+            .client
+            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())?
+            .json()?;
 
-        let json: Value = response.into_json().map_err(|err| err.to_string())?;
-        Ok(json["dist-tags"]["latest"]
+        Ok(response["dist-tags"]["latest"]
             .as_str()
             .ok_or_else(|| "latest is not a string".to_string())?
             .to_string())
     }
 
     fn repository(&self, package_name: &str) -> Result<Repository, String> {
-        let response = ureq::get(format!("https://registry.npmjs.org/{}", package_name).as_str())
-            .call()
-            .map_err(|err| err.to_string())?;
+        let response: Value = self
+            .client
+            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())?
+            .json()?;
 
-        let json: Value = response.into_json().map_err(|err| err.to_string())?;
-        let repository = json["repository"]["url"]
+        let repository = response["repository"]["url"]
             .as_str()
             .ok_or("repository url is not a string")?
             .to_string();
@@ -48,6 +56,16 @@ impl InfoRetriever for DependencyInfoRetriever {
                 .ok_or_else(|| format!("repository '{}' does not match expression", &repository))?;
 
             Ok(Repository::GitHub {
+                organization: captures["organization"].to_string(),
+                name: captures["name"].to_string(),
+            })
+        } else if self.gitlab_registry_regex.is_match(&repository) {
+            let captures = self
+                .gitlab_registry_regex
+                .captures(&repository)
+                .ok_or_else(|| format!("repository '{}' does not match expression", &repository))?;
+
+            Ok(Repository::GitLab {
                 organization: captures["organization"].to_string(),
                 name: captures["name"].to_string(),
             })
@@ -94,6 +112,18 @@ mod tests {
         result.should(be_ok(equal(Repository::GitHub {
             organization: "babel".into(),
             name: "babel".into(),
+        })))
+    }
+
+    #[test]
+    fn retrieves_the_gitlab_repository_of_bfj() {
+        let retriever = DependencyInfoRetriever::default();
+
+        let result = retriever.repository("bfj");
+
+        result.should(be_ok(equal(Repository::GitLab {
+            organization: "philbooth".into(),
+            name: "bfj".into(),
         })))
     }
 }

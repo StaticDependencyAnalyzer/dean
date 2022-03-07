@@ -4,6 +4,7 @@ use serde_json::Value::Object;
 #[derive(Clone, PartialEq, Debug)]
 pub enum Repository {
     GitHub { organization: String, name: String },
+    GitLab { organization: String, name: String },
 }
 
 #[cfg_attr(test, mockall::automock)]
