@@ -18,7 +18,12 @@ repos:
         name: Rust Fix
         pass_filenames: false
         language: system
-        entry: cargo fix --allow-staged --allow-dirty
+        entry: make fix
+      - id: rust-lint
+        name: Rust Lint
+        pass_filenames: false
+        language: system
+        entry: make lint
       - id: rust-docs
         name: Rust Doc Generation Check
         pass_filenames: false
