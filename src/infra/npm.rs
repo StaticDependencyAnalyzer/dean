@@ -144,4 +144,24 @@ mod tests {
             name: "bfj".into(),
         })));
     }
+
+    #[test]
+    fn retrieves_the_raw_repository_of_atob() {
+        let retriever = DependencyInfoRetriever::default();
+
+        let result = retriever.repository("atob");
+
+        result.should(be_ok(equal(Repository::Raw {
+            address: "git://git.coolaj86.com/coolaj86/atob.js.git".into(),
+        })));
+    }
+
+    #[test]
+    fn retrieves_unknown_repository_of_json5() {
+        let retriever = DependencyInfoRetriever::default();
+
+        let result = retriever.repository("@types/json5");
+
+        result.should(be_ok(equal(Repository::Unknown)));
+    }
 }
