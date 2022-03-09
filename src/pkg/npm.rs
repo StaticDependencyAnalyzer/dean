@@ -91,7 +91,10 @@ impl DependencyReader {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use expects::{equal::be_ok, iter::consist_of, Subject};
+    use expects::{
+        matcher::{be_ok, consist_of},
+        Subject,
+    };
     use mockall::predicate::eq;
 
     #[test]

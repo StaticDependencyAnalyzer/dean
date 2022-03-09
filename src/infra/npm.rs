@@ -97,7 +97,7 @@ impl InfoRetriever for DependencyInfoRetriever {
 mod tests {
     use super::DependencyInfoRetriever;
     use crate::pkg::npm::{InfoRetriever, Repository};
-    use expects::equal::{be_ok, equal};
+    use expects::matcher::{be_ok, equal};
     use expects::Subject;
 
     #[test]

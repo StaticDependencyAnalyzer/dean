@@ -33,7 +33,7 @@ impl Client {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use expects::{equal::equal, Subject};
+    use expects::{matcher::equal, Subject};
     use serde_json::Value;
 
     #[test]
