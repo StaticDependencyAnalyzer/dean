@@ -9,10 +9,10 @@ pub struct DependencyInfoRetriever {
     gitlab_registry_regex: Regex,
 }
 
-impl Default for DependencyInfoRetriever {
-    fn default() -> Self {
-        DependencyInfoRetriever {
-            client: http::Client::new(),
+impl DependencyInfoRetriever {
+    pub fn new(client: http::Client) -> Self {
+        Self {
+            client,
             github_registry_regex: Regex::new(
                 ".*?github.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)",
             )
@@ -22,6 +22,12 @@ impl Default for DependencyInfoRetriever {
             )
             .unwrap(),
         }
+    }
+}
+
+impl Default for DependencyInfoRetriever {
+    fn default() -> Self {
+        DependencyInfoRetriever::new(http::Client::default())
     }
 }
 

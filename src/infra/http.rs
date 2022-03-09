@@ -11,16 +11,20 @@ impl Response {
     }
 }
 
-#[derive(Copy, Clone, Debug, Default)]
-pub struct Client {}
+#[derive(Clone, Debug, Default)]
+pub struct Client {
+    client: reqwest::blocking::Client,
+}
 
 impl Client {
-    pub fn new() -> Self {
-        Client {}
+    pub fn new(client: reqwest::blocking::Client) -> Self {
+        Client { client }
     }
 
     pub fn get(&self, url: &str) -> Result<Response, String> {
-        reqwest::blocking::get(url)
+        self.client
+            .get(url)
+            .send()
             .map(|response| Response { inner: response })
             .map_err(|err| err.to_string())
     }
@@ -34,7 +38,7 @@ mod tests {
 
     #[test]
     fn performs_a_get_request() {
-        let client = Client::new();
+        let client = Client::new(reqwest::blocking::Client::new());
 
         let response: Value = client
             .get("https://registry.npmjs.org/")
