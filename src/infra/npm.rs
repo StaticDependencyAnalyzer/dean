@@ -66,12 +66,7 @@ impl InfoRetriever for DependencyInfoRetriever {
             let captures = self
                 .github_registry_regex
                 .captures(repository.as_ref().unwrap())
-                .ok_or_else(|| {
-                    format!(
-                        "repository '{}' does not match expression",
-                        &repository.as_ref().unwrap()
-                    )
-                })?;
+                .unwrap();
 
             Ok(Repository::GitHub {
                 organization: captures["organization"].to_string(),
@@ -84,12 +79,7 @@ impl InfoRetriever for DependencyInfoRetriever {
             let captures = self
                 .gitlab_registry_regex
                 .captures(repository.as_ref().unwrap())
-                .ok_or_else(|| {
-                    format!(
-                        "repository '{}' does not match expression",
-                        &repository.as_ref().unwrap()
-                    )
-                })?;
+                .unwrap();
 
             Ok(Repository::GitLab {
                 organization: captures["organization"].to_string(),
