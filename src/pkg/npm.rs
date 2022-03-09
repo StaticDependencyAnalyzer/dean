@@ -1,6 +1,7 @@
 use rayon::prelude::*;
 use serde_json::Value;
 use serde_json::Value::Object;
+use std::fmt::{Display, Formatter};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone, PartialEq, Debug)]
@@ -9,6 +10,23 @@ pub enum Repository {
     GitHub { organization: String, name: String },
     GitLab { organization: String, name: String },
     Raw { address: String },
+}
+
+impl Display for Repository {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Repository::Unknown => f.write_str("Unknown repository"),
+            Repository::GitHub { name, organization } => f.write_str(&format!(
+                "GitHub repository (https://github.com/{}/{})",
+                organization, name
+            )),
+            Repository::GitLab { name, organization } => f.write_str(&format!(
+                "GitLab repository (https://gitlab.com/{}/{})",
+                organization, name
+            )),
+            Repository::Raw { address } => f.write_str(&format!("Raw repository ({})", address)),
+        }
+    }
 }
 
 #[cfg_attr(test, mockall::automock)]

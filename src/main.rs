@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     reader.retrieve_from_reader(file).map(|x| {
         for dep in &x {
             println!(
-                "{}: {} ({} latest: {})",
+                "{}: {} ({} latest: {}) - {}",
                 dep.name,
                 dep.version,
                 if dep.version == dep.latest_version {
@@ -38,6 +38,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     "️⚠️"
                 },
                 dep.latest_version,
+                dep.repository
             );
         }
     })?;
@@ -47,7 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 fn http_client() -> Client {
     let reqwest_client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(3))
+        .timeout(Duration::from_secs(30))
         .build()
         .unwrap();
 
