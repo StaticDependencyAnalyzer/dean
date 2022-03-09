@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::pedantic, clippy::style, clippy::cargo)]
-#![deny(unused)]
+#![warn(unused)]
 
 mod cmd;
 mod infra;

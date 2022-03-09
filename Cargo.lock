@@ -198,7 +198,7 @@ dependencies = [
 [[package]]
 name = "expects"
 version = "0.1.0"
-source = "git+https://github.com/tembleking/expects?branch=master#c06481d859a7d4271dd7dcd9ca0672007ac6ca34"
+source = "git+https://github.com/tembleking/expects?branch=master#44e08a424c20d0b06f4cd4c9778058b08590c38d"
 
 [[package]]
 name = "fastrand"
