@@ -4,6 +4,17 @@ version = "0.1.0"
 edition = "2021"
 authors = ["fede@federico.barcelona"]
 description = "Static (De)pendency (An)alyzer"
+repository = "https://github.com/StaticDependencyAnalyzer/dean"
+readme = "README.md"
+keywords = [
+    "dependency",
+    "dependencies",
+    "analysis"
+]
+categories = [
+    "development-tools",
+]
+license = "custom"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

@@ -1,3 +1,6 @@
+#![forbid(unsafe_code)]
+#![deny(clippy::pedantic, clippy::cargo)]
+
 mod cmd;
 mod infra;
 mod pkg;
@@ -19,7 +22,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
 
     reader.retrieve_from_reader(file).map(|x| {
-        x.iter().for_each(|dep| {
+        for dep in &x {
             println!(
                 "{}: {} ({} latest: {})",
                 dep.name,
@@ -31,7 +34,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 },
                 dep.latest_version,
             );
-        });
+        }
     })?;
 
     Ok(())

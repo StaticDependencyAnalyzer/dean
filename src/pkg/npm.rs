@@ -38,7 +38,7 @@ impl DependencyReader {
         if let Object(dependencies) = &result["dependencies"] {
             let deps: Vec<_> = dependencies
                 .into_iter()
-                .map(|(name, value)| (name, value["version"].as_str().map(|s| s.to_string())))
+                .map(|(name, value)| (name, value["version"].as_str().map(ToString::to_string)))
                 .collect();
 
             deps.into_par_iter()

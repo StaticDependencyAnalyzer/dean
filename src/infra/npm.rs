@@ -53,7 +53,7 @@ impl InfoRetriever for DependencyInfoRetriever {
         let repository = response["repository"]["url"]
             .as_str()
             .or_else(|| response["homepage"].as_str())
-            .map(|str| str.to_string());
+            .map(ToString::to_string);
 
         if repository.is_none() {
             return Ok(Repository::Unknown);
@@ -140,7 +140,7 @@ mod tests {
         result.should(be_ok(equal(Repository::GitHub {
             organization: "babel".into(),
             name: "babel".into(),
-        })))
+        })));
     }
 
     #[test]
@@ -152,6 +152,6 @@ mod tests {
         result.should(be_ok(equal(Repository::GitLab {
             organization: "philbooth".into(),
             name: "bfj".into(),
-        })))
+        })));
     }
 }
