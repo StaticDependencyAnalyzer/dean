@@ -50,46 +50,38 @@ impl InfoRetriever for DependencyInfoRetriever {
             .get(format!("https://registry.npmjs.org/{}", package_name).as_str())?
             .json()?;
 
-        let repository = response["repository"]["url"]
+        let possible_repository = response["repository"]["url"]
             .as_str()
             .or_else(|| response["homepage"].as_str())
             .map(ToString::to_string);
 
-        if repository.is_none() {
+        if possible_repository.is_none() {
             return Ok(Repository::Unknown);
         }
 
-        return if self
-            .github_registry_regex
-            .is_match(repository.as_ref().unwrap())
-        {
-            let captures = self
-                .github_registry_regex
-                .captures(repository.as_ref().unwrap())
-                .unwrap();
+        let repository = possible_repository.as_ref().unwrap();
 
-            Ok(Repository::GitHub {
+        if self.github_registry_regex.is_match(repository) {
+            let captures = self.github_registry_regex.captures(repository).unwrap();
+
+            return Ok(Repository::GitHub {
                 organization: captures["organization"].to_string(),
                 name: captures["name"].to_string(),
-            })
-        } else if self
-            .gitlab_registry_regex
-            .is_match(repository.as_ref().unwrap())
-        {
-            let captures = self
-                .gitlab_registry_regex
-                .captures(repository.as_ref().unwrap())
-                .unwrap();
+            });
+        }
 
-            Ok(Repository::GitLab {
+        if self.gitlab_registry_regex.is_match(repository) {
+            let captures = self.gitlab_registry_regex.captures(repository).unwrap();
+
+            return Ok(Repository::GitLab {
                 organization: captures["organization"].to_string(),
                 name: captures["name"].to_string(),
-            })
-        } else {
-            Ok(Repository::Raw {
-                address: repository.as_ref().unwrap().to_string(),
-            })
-        };
+            });
+        }
+
+        Ok(Repository::Raw {
+            address: repository.clone(),
+        })
     }
 }
 
