@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
 
-#[derive(Eq, PartialEq, Clone, Debug, Hash)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub struct Tag {
     pub name: String,
     pub commit_id: String,
@@ -173,6 +173,7 @@ mod tests {
             creation_timestamp: 1_646_268_794,
         }));
     }
+
     #[test]
     fn it_retrieves_the_tags_of_a_repository() {
         let repository = Repository::new("https://github.com/libgit2/libgit2").unwrap();
@@ -185,6 +186,7 @@ mod tests {
             commit_id: "182d0d1ee933de46bf0b5a6ec269bafa77aba9a2".to_string(),
         }));
     }
+
     #[test]
     fn it_retrieves_commit_ids_for_each_tag_of_a_repository() {
         let repository = Repository::new("https://github.com/libgit2/libgit2").unwrap();
