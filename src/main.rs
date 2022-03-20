@@ -17,8 +17,6 @@ use cmd::parse_args;
 use infra::npm::DependencyInfoRetriever;
 use pkg::npm::DependencyReader;
 
-struct Logger {}
-
 fn main() -> Result<(), Box<dyn Error>> {
     let args = parse_args();
     simple_logger::SimpleLogger::new()
