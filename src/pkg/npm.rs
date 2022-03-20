@@ -1,3 +1,4 @@
+use log::info;
 use rayon::prelude::*;
 use serde_json::Value;
 use serde_json::Value::Object;
@@ -63,6 +64,11 @@ impl DependencyReader {
                 .map(|(name, version)| {
                     let retriever = self.npm_info_retriever.clone();
                     if let Some(version) = version {
+                        info!(
+                            target: "npm-dependency-retriever",
+                            "retrieving information for dependency [name={}, version={}]",
+                            name, version
+                        );
                         Ok(Dependency {
                             name: name.into(),
                             version,

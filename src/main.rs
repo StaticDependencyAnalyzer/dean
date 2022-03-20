@@ -6,6 +6,7 @@ mod cmd;
 mod infra;
 mod pkg;
 
+use log::LevelFilter;
 use std::error::Error;
 use std::fs::File;
 use std::time::Duration;
@@ -16,8 +17,15 @@ use cmd::parse_args;
 use infra::npm::DependencyInfoRetriever;
 use pkg::npm::DependencyReader;
 
+struct Logger {}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = parse_args();
+    simple_logger::SimpleLogger::new()
+        .with_level(LevelFilter::Info)
+        .with_colors(true)
+        .env()
+        .init()?;
 
     let http_client = http_client();
     let retriever = Box::new(DependencyInfoRetriever::new(http_client));
