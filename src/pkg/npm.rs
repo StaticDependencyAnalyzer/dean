@@ -13,19 +13,26 @@ pub enum Repository {
     Raw { address: String },
 }
 
+impl Repository {
+    pub fn url(&self) -> Option<String> {
+        match self {
+            Repository::GitHub { name, organization } => {
+                Some(format!("https://github.com/{}/{}", organization, name))
+            }
+            Repository::GitLab { name, organization } => {
+                Some(format!("https://gitlab.com/{}/{}", organization, name))
+            }
+            Repository::Raw { address } => Some(address.clone()),
+            Repository::Unknown => None,
+        }
+    }
+}
+
 impl Display for Repository {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Repository::Unknown => f.write_str("Unknown repository"),
-            Repository::GitHub { name, organization } => f.write_str(&format!(
-                "GitHub repository (https://github.com/{}/{})",
-                organization, name
-            )),
-            Repository::GitLab { name, organization } => f.write_str(&format!(
-                "GitLab repository (https://gitlab.com/{}/{})",
-                organization, name
-            )),
-            Repository::Raw { address } => f.write_str(&format!("Raw repository ({})", address)),
+        match self.url() {
+            None => f.write_str("Unknown repository"),
+            Some(url) => f.write_str(&url),
         }
     }
 }

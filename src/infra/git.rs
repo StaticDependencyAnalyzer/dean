@@ -1,21 +1,27 @@
+use crate::pkg::policy::{Commit, CommitRetriever, Tag};
 use anyhow::Context;
 use git2::Oid;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
 
-#[derive(Eq, PartialEq, Clone, Debug)]
-pub struct Tag {
-    pub name: String,
-    pub commit_id: String,
-}
+pub struct RepositoryRetriever {}
 
-#[derive(Eq, PartialEq, Clone, Debug)]
-pub struct Commit {
-    pub id: String,
-    pub author_name: String,
-    pub author_email: String,
-    pub creation_timestamp: i64,
+impl CommitRetriever for RepositoryRetriever {
+    fn commits_for_each_tag(
+        &self,
+        repository_url: &str,
+    ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
+        Repository::new(repository_url)
+            .map_err(|e| format!("unable to create repository: {}", e))?
+            .commits_for_each_tag()
+    }
+
+    fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
+        Repository::new(repository_url)
+            .map_err(|e| format!("unable to create repository: {}", e))?
+            .all_tags()
+    }
 }
 
 pub struct Repository {
@@ -35,23 +41,7 @@ impl Repository {
         })
     }
 
-    pub fn all_tags(&self) -> Result<Vec<Tag>, Box<dyn Error>> {
-        let mut tags = vec![];
-        self.repository.tag_foreach(|oid, name| {
-            if let Ok(obj) = self.repository.find_object(oid, None) {
-                if let Some(commit) = obj.as_commit() {
-                    tags.push(Tag {
-                        name: String::from_utf8_lossy(name).replace("refs/tags/", ""),
-                        commit_id: commit.id().to_string(),
-                    });
-                }
-            }
-            true
-        })?;
-        Ok(tags)
-    }
-
-    pub fn commits_for_each_tag(&self) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
+    fn commits_for_each_tag(&self) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
         let commits_ids = self.commit_ids_for_each_tag()?;
         let map = commits_ids
             .into_iter()
@@ -68,6 +58,25 @@ impl Repository {
             })
             .collect::<HashMap<_, _>>();
         Ok(map)
+    }
+
+    #[allow(clippy::cast_sign_loss)]
+    fn all_tags(&self) -> Result<Vec<Tag>, Box<dyn Error>> {
+        let mut tags = vec![];
+        self.repository.tag_foreach(|oid, name| {
+            if let Ok(obj) = self.repository.find_object(oid, None) {
+                if let Some(commit) = obj.as_commit() {
+                    tags.push(Tag {
+                        name: String::from_utf8_lossy(name).replace("refs/tags/", ""),
+                        commit_id: commit.id().to_string(),
+                        commit_timestamp: commit.time().seconds() as u64,
+                    });
+                }
+            }
+            true
+        })?;
+        tags.sort_by(|a, b| a.commit_timestamp.cmp(&b.commit_timestamp));
+        Ok(tags)
     }
 
     fn all_commits(&self) -> Result<Vec<Commit>, Box<dyn Error>> {
@@ -184,6 +193,7 @@ mod tests {
         tags.should(contain_element(Tag {
             name: "v1.4.2".to_string(),
             commit_id: "182d0d1ee933de46bf0b5a6ec269bafa77aba9a2".to_string(),
+            commit_timestamp: 1_645_905_004,
         }));
     }
 
