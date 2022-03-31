@@ -183,6 +183,7 @@ dependencies = [
  "clap",
  "expects",
  "git2",
+ "itertools",
  "log",
  "mockall",
  "rayon",
