@@ -21,11 +21,13 @@ pub struct Policies {
 
 impl Config {
     pub fn load_from_reader(reader: &mut dyn std::io::Read) -> Result<Self, Box<dyn Error>> {
-        serde_yaml::from_reader(reader).map_err(|e| e.to_string().into())
+        let result = serde_yaml::from_reader(reader)?;
+        Ok(result)
     }
 
     pub fn dump_to_string(&self) -> Result<String, Box<dyn Error>> {
-        serde_yaml::to_string(&self).map_err(|e| e.to_string().into())
+        let result = serde_yaml::to_string(&self)?;
+        Ok(result)
     }
 }
 

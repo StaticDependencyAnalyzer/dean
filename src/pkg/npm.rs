@@ -5,7 +5,7 @@ use serde_json::Value::Object;
 use std::fmt::{Display, Formatter};
 use std::sync::{Arc, RwLock};
 
-#[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(test, derive(Clone, PartialEq, Debug))]
 pub enum Repository {
     Unknown,
     GitHub { organization: String, name: String },
@@ -47,7 +47,7 @@ pub struct DependencyReader {
     npm_info_retriever: Arc<RwLock<Box<dyn InfoRetriever + Send + Sync>>>,
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[cfg_attr(test, derive(Clone, PartialEq, Debug))]
 pub struct Dependency {
     pub name: String,
     pub version: String,
