@@ -4,23 +4,74 @@ use git2::Oid;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync;
 
-pub struct RepositoryRetriever {}
+#[derive(Clone)]
+struct RepositoryResult {
+    commits_for_each_tag: HashMap<String, Vec<Commit>>,
+    all_tags: Vec<Tag>,
+}
+
+pub struct RepositoryRetriever {
+    cache: sync::Mutex<lru::LruCache<String, RepositoryResult>>,
+}
 
 impl CommitRetriever for RepositoryRetriever {
     fn commits_for_each_tag(
         &self,
         repository_url: &str,
     ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
-        Repository::new(repository_url)
-            .map_err(|e| format!("unable to create repository: {}", e))?
-            .commits_for_each_tag()
+        if let Some(repository) = self
+            .cache
+            .lock()
+            .map_err(|e| format!("Could not read cache: {}", e))?
+            .get(repository_url)
+        {
+            return Ok(repository.commits_for_each_tag.clone());
+        }
+
+        Ok(self
+            .save_repository_result(repository_url)?
+            .commits_for_each_tag)
     }
 
     fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
-        Repository::new(repository_url)
-            .map_err(|e| format!("unable to create repository: {}", e))?
-            .all_tags()
+        let mut lock = self
+            .cache
+            .lock()
+            .map_err(|e| format!("Could not read cache: {}", e))?;
+        if let Some(repository) = lock.get_mut(repository_url) {
+            return Ok(repository.all_tags.clone());
+        }
+        Ok(self.save_repository_result(repository_url)?.all_tags)
+    }
+}
+
+impl RepositoryRetriever {
+    pub fn new() -> Self {
+        let cache = lru::LruCache::new(1000);
+        let mutex = sync::Mutex::new(cache);
+        RepositoryRetriever { cache: mutex }
+    }
+
+    fn save_repository_result(
+        &self,
+        repository_url: &str,
+    ) -> Result<RepositoryResult, Box<dyn Error>> {
+        let repository = Repository::new(repository_url)
+            .map_err(|e| format!("unable to create repository: {}", e))?;
+        let commits_for_each_tag = repository.commits_for_each_tag()?;
+        let all_tags = repository.all_tags()?;
+
+        let result = RepositoryResult {
+            commits_for_each_tag,
+            all_tags,
+        };
+        self.cache
+            .lock()
+            .map_err(|e| format!("Could not write cache: {}", e))?
+            .put(repository_url.to_string(), result.clone());
+        Ok(result)
     }
 }
 
@@ -241,5 +292,47 @@ mod tests {
             .unwrap()
             .len()
             .should(equal(6_usize));
+    }
+
+    #[test]
+    fn it_retrieves_the_contents_of_the_repositories_and_stores_them_in_a_cache() {
+        let repository_retriever = RepositoryRetriever::new();
+        let repository_url = "https://github.com/libgit2/libgit2";
+
+        repository_retriever
+            .commits_for_each_tag(repository_url)
+            .unwrap();
+        let after_retrieving_instant = std::time::Instant::now();
+
+        let commits_for_each_tag = repository_retriever
+            .commits_for_each_tag(repository_url)
+            .unwrap();
+        let after_second_retrieval_instant = std::time::Instant::now();
+
+        assert!(
+            after_second_retrieval_instant
+                .duration_since(after_retrieving_instant)
+                .as_secs()
+                < 1
+        );
+
+        commits_for_each_tag
+            .get("v1.4.2")
+            .unwrap()
+            .should(contain_element(Commit {
+                id: "43bfa124c844288a9e2e361e1122cc1cc51f1e8f".to_string(),
+                author_name: "Carlos Martín Nieto".to_string(),
+                author_email: "carlosmn@github.com".to_string(),
+                creation_timestamp: 1_645_898_340,
+            }));
+        let after_retrieving_tags_instant = std::time::Instant::now();
+        assert!(
+            after_retrieving_tags_instant
+                .duration_since(after_retrieving_instant)
+                .as_secs()
+                < 1
+        );
+
+        assert!(repository_retriever.all_tags(repository_url).unwrap().len() >= 76);
     }
 }

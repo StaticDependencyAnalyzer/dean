@@ -1,5 +1,5 @@
 use crate::pkg::npm::Repository;
-use crate::pkg::policy::{CommitRetriever, Evaluation};
+use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
 use anyhow::Context;
 use itertools::Itertools;
 use std::collections::HashSet;
@@ -11,21 +11,9 @@ pub struct ContributorsRatio {
     max_contributor_ratio: f64,
 }
 
-impl ContributorsRatio {
-    pub fn new(
-        retriever: Box<dyn CommitRetriever>,
-        max_number_of_releases_to_check: usize,
-        max_contributor_ratio: f64,
-    ) -> Self {
-        Self {
-            retriever,
-            max_number_of_releases_to_check,
-            max_contributor_ratio,
-        }
-    }
-
+impl Policy for ContributorsRatio {
     #[allow(clippy::cast_precision_loss)]
-    pub fn check(&self, repository: &Repository) -> Result<Evaluation, Box<dyn Error>> {
+    fn evaluate(&self, repository: &Repository) -> Result<Evaluation, Box<dyn Error>> {
         let repo_url = repository
             .url()
             .context("the repository doesn't have a URL")?;
@@ -75,6 +63,20 @@ impl ContributorsRatio {
             }
         }
         Ok(Evaluation::Pass)
+    }
+}
+
+impl ContributorsRatio {
+    pub fn new(
+        retriever: Box<dyn CommitRetriever>,
+        max_number_of_releases_to_check: usize,
+        max_contributor_ratio: f64,
+    ) -> Self {
+        Self {
+            retriever,
+            max_number_of_releases_to_check,
+            max_contributor_ratio,
+        }
     }
 }
 
@@ -138,7 +140,7 @@ mod tests {
         });
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
-        let result = contributors_ratio_policy.check(&GitHub {
+        let result = contributors_ratio_policy.evaluate(&GitHub {
             organization: "some_org".to_string(),
             name: "some_repo".to_string(),
         });
@@ -187,7 +189,7 @@ mod tests {
         });
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
-        let result = contributors_ratio_policy.check(&GitHub {
+        let result = contributors_ratio_policy.evaluate(&GitHub {
             organization: "some_org".to_string(),
             name: "some_repo".to_string(),
         });

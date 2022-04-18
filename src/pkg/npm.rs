@@ -74,13 +74,13 @@ impl DependencyReader {
                         info!(
                             target: "npm-dependency-retriever",
                             "retrieving information for dependency [name={}, version={}]",
-                            name, version
+                            name, &version
                         );
                         Ok(Dependency {
                             name: name.into(),
-                            version,
-                            latest_version: retriever.read().unwrap().latest_version(name)?,
-                            repository: retriever.read().unwrap().repository(name)?,
+                            version: version.clone(),
+                            latest_version: retriever.read().unwrap().latest_version(name).map_err(|e| format!("unable to retrieve latest version [name={}, version={}]: {}", name, &version, e))?,
+                            repository: retriever.read().unwrap().repository(name).map_err(|e| format!("unable to retrieve repository [name={}, version={}]: {}", name, &version, e))?,
                         })
                     } else {
                         Err("version not found in map".to_string())

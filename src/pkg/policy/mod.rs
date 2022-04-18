@@ -46,3 +46,8 @@ pub enum Evaluation {
     Pass,
     Fail,
 }
+
+pub trait Policy {
+    /// Evaluates the policy.
+    fn evaluate(&self, repository: &Repository) -> Result<Evaluation, Box<dyn Error>>;
+}

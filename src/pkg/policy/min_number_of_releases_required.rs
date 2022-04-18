@@ -1,4 +1,5 @@
 use super::{Clock, CommitRetriever, Evaluation, Repository};
+use crate::pkg::policy::Policy;
 use anyhow::Context;
 use std::error::Error;
 use std::time::Duration;
@@ -10,8 +11,8 @@ pub struct MinNumberOfReleasesRequired {
     clock: Box<dyn Clock>,
 }
 
-impl MinNumberOfReleasesRequired {
-    pub fn check(&self, repository: &Repository) -> Result<Evaluation, Box<dyn Error>> {
+impl Policy for MinNumberOfReleasesRequired {
+    fn evaluate(&self, repository: &Repository) -> Result<Evaluation, Box<dyn Error>> {
         let repository_url = repository
             .url()
             .context("the repository did not contain a URL")?;
@@ -97,10 +98,11 @@ mod tests {
             clock,
         );
 
-        let result: Result<Evaluation, Box<dyn Error>> = number_of_releases_policy.check(&GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
-        });
+        let result: Result<Evaluation, Box<dyn Error>> =
+            number_of_releases_policy.evaluate(&GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            });
 
         result.should(be_ok(equal(Evaluation::Pass)));
     }
@@ -129,10 +131,11 @@ mod tests {
             clock,
         );
 
-        let result: Result<Evaluation, Box<dyn Error>> = number_of_releases_policy.check(&GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
-        });
+        let result: Result<Evaluation, Box<dyn Error>> =
+            number_of_releases_policy.evaluate(&GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            });
 
         result.should(be_ok(equal(Evaluation::Fail)));
     }
@@ -173,10 +176,11 @@ mod tests {
             clock,
         );
 
-        let result: Result<Evaluation, Box<dyn Error>> = number_of_releases_policy.check(&GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
-        });
+        let result: Result<Evaluation, Box<dyn Error>> =
+            number_of_releases_policy.evaluate(&GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            });
 
         result.should(be_ok(equal(Evaluation::Fail)));
     }
