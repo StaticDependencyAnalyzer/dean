@@ -38,7 +38,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "{}: {} (latest: {}) - {} - {}",
                 dep.name,
                 dep.version,
-                dep.latest_version,
+                dep.latest_version
+                    .as_ref()
+                    .unwrap_or(&"unknown".to_string()),
                 dep.repository,
                 check_if_dependency_is_okay(&config, dep)
             );
@@ -49,7 +51,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn check_if_dependency_is_okay(_config: &Config, dep: &Dependency) -> &'static str {
-    if dep.version == dep.latest_version {
+    if dep.latest_version.is_none() {
+        "unknown"
+    } else if dep.latest_version.as_ref().unwrap() == &dep.version {
         "✅ up-to-date"
     } else {
         "️⚠️ outdated"

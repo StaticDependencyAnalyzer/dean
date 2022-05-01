@@ -1,5 +1,6 @@
 use crate::infra::http;
-use crate::pkg::npm::{InfoRetriever, Repository};
+use crate::pkg::npm::InfoRetriever;
+use crate::pkg::Repository;
 use regex::Regex;
 use serde_json::Value;
 
@@ -88,7 +89,8 @@ impl InfoRetriever for DependencyInfoRetriever {
 #[cfg(test)]
 mod tests {
     use super::DependencyInfoRetriever;
-    use crate::pkg::npm::{InfoRetriever, Repository};
+    use crate::pkg::npm::InfoRetriever;
+    use crate::pkg::Repository;
     use expects::matcher::{be_ok, equal};
     use expects::Subject;
 

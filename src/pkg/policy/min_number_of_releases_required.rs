@@ -54,12 +54,12 @@ impl MinNumberOfReleasesRequired {
 mod tests {
     use super::super::{MockClock, MockCommitRetriever, Tag};
     use super::*;
-    use crate::pkg::npm::Repository::GitHub;
     use crate::pkg::policy::Evaluation;
     use expects::matcher::{be_ok, equal};
     use expects::Subject;
     use mockall::predicate::eq;
 
+    use crate::pkg::Repository::GitHub;
     use std::time::Duration;
 
     #[test]

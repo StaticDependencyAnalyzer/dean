@@ -1,5 +1,5 @@
-use crate::pkg::npm::Repository;
 use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
+use crate::pkg::Repository;
 use anyhow::Context;
 use itertools::Itertools;
 use std::collections::HashSet;
@@ -84,7 +84,7 @@ impl ContributorsRatio {
 mod tests {
     use super::super::{Commit, MockCommitRetriever, Tag};
     use super::*;
-    use crate::pkg::npm::Repository::GitHub;
+    use crate::pkg::Repository::GitHub;
     use expects::matcher::{be_ok, equal};
     use expects::Subject;
     use mockall::predicate::eq;

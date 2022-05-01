@@ -1,10 +1,10 @@
-use crate::pkg::npm::Repository;
 use std::collections::HashMap;
 use std::error::Error;
 
 mod contributors_ratio;
 mod min_number_of_releases_required;
 
+use crate::pkg::Repository;
 pub use contributors_ratio::ContributorsRatio;
 pub use min_number_of_releases_required::MinNumberOfReleasesRequired;
 
