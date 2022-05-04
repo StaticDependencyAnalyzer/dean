@@ -1,6 +1,7 @@
 use crate::pkg::policy::{Commit, CommitRetriever, Tag};
 use anyhow::Context;
 use git2::Oid;
+use log::error;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
@@ -101,9 +102,7 @@ impl Repository {
                     key,
                     value
                         .into_iter()
-                        .map(|commit_id| self.commit_from_id(Cow::from(commit_id)))
-                        .filter(std::result::Result::is_ok)
-                        .map(std::result::Result::unwrap)
+                        .flat_map(|commit_id| self.commit_from_id(Cow::from(commit_id)))
                         .collect(),
                 )
             })
@@ -141,10 +140,16 @@ impl Repository {
 
         let commits = revwalk
             .into_iter()
-            .map(|oid| {
-                self.repository
-                    .find_commit(oid.unwrap())
-                    .expect("unable to obtain commit from Oid")
+            .flatten()
+            .filter_map(|oid| {
+                let commit = self.repository.find_commit(oid);
+                match commit {
+                    Ok(commit) => Some(commit),
+                    Err(error) => {
+                        error!("unable to find commit for Oid {}: {}", oid, error);
+                        None
+                    }
+                }
             })
             .map(|commit| Commit {
                 id: commit.id().to_string(),
@@ -170,10 +175,7 @@ impl Repository {
 
             let mut revwalk = self.repository.revwalk()?;
             revwalk.push(first_oid)?;
-            for oid in revwalk
-                .filter(std::result::Result::is_ok)
-                .map(std::result::Result::unwrap)
-            {
+            for oid in revwalk.flatten() {
                 if oid == second_oid {
                     break;
                 }
