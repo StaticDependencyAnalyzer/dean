@@ -50,7 +50,7 @@ mod tests {
                 },
                 min_number_of_releases_required: min_number_of_releases_required::Config {
                     min_number_of_releases: 3_usize,
-                    days: 180_u64,
+                    days: 365_u64,
                     skip: vec![],
                     enabled: true,
                 },
@@ -94,7 +94,7 @@ policies:
     enabled: true
   min_number_of_releases_required:
     min_number_of_releases: 3
-    days: 180
+    days: 365
     skip: []
     enabled: true
 ",
