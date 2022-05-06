@@ -16,7 +16,7 @@ pub struct DependencyReader {
     npm_info_retriever: Arc<RwLock<Box<dyn InfoRetriever + Send + Sync>>>,
 }
 
-#[cfg_attr(test, derive(Clone, PartialEq, Debug))]
+#[cfg_attr(test, derive(Clone, PartialEq, Debug, Default))]
 pub struct Dependency {
     pub name: String,
     pub version: String,

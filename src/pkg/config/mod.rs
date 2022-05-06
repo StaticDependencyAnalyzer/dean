@@ -50,7 +50,7 @@ mod tests {
                 },
                 min_number_of_releases_required: min_number_of_releases_required::Config {
                     min_number_of_releases: 3_usize,
-                    days: 180_usize,
+                    days: 180_u64,
                     skip: vec![],
                     enabled: true,
                 },
@@ -71,7 +71,7 @@ mod tests {
                 },
                 min_number_of_releases_required: min_number_of_releases_required::Config {
                     min_number_of_releases: 3_usize,
-                    days: 180_usize,
+                    days: 180_u64,
                     skip: vec!["react-*".to_string()],
                     enabled: false,
                 },

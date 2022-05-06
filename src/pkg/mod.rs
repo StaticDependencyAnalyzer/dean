@@ -1,3 +1,4 @@
+use crate::pkg::Repository::Unknown;
 use std::fmt::{Display, Formatter};
 
 pub mod config;
@@ -11,6 +12,12 @@ pub enum Repository {
     GitHub { organization: String, name: String },
     GitLab { organization: String, name: String },
     Raw { address: String },
+}
+
+impl Default for Repository {
+    fn default() -> Self {
+        Unknown
+    }
 }
 
 impl Repository {

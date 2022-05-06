@@ -4,7 +4,7 @@ use std::error::Error;
 mod contributors_ratio;
 mod min_number_of_releases_required;
 
-use crate::pkg::Repository;
+use crate::Dependency;
 pub use contributors_ratio::ContributorsRatio;
 pub use min_number_of_releases_required::MinNumberOfReleasesRequired;
 
@@ -41,13 +41,13 @@ pub trait Clock {
     fn now_timestamp(&self) -> u64;
 }
 
-#[derive(Eq, PartialEq, Copy, Clone, Debug)]
+#[derive(Eq, PartialEq, Clone, Debug)]
 pub enum Evaluation {
     Pass,
-    Fail,
+    Fail(String),
 }
 
 pub trait Policy {
     /// Evaluates the policy.
-    fn evaluate(&self, repository: &Repository) -> Result<Evaluation, Box<dyn Error>>;
+    fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>>;
 }

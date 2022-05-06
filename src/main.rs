@@ -8,17 +8,20 @@ mod pkg;
 
 use std::fs::File;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use log::LevelFilter;
 
 use crate::cmd::parse_args;
 use crate::http::Client;
+use crate::infra::git::RepositoryRetriever;
 
 use crate::infra::http;
 use crate::infra::npm::DependencyInfoRetriever;
 use crate::pkg::config::Config;
 use crate::pkg::npm::{Dependency, DependencyReader};
+use crate::pkg::policy::{ContributorsRatio, Evaluation, MinNumberOfReleasesRequired, Policy};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
@@ -32,6 +35,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open(&args.lock_file)
         .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
 
+    let policies = policies_from_config(&config);
+
     reader.retrieve_from_reader(file).map(|x| {
         for dep in &x {
             println!(
@@ -42,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .as_ref()
                     .unwrap_or(&"unknown".to_string()),
                 dep.repository,
-                check_if_dependency_is_okay(&config, dep)
+                check_if_dependency_is_okay(&policies, dep)
             );
         }
     })?;
@@ -50,14 +55,52 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn check_if_dependency_is_okay(_config: &Config, dep: &Dependency) -> &'static str {
-    if dep.latest_version.is_none() {
-        "unknown"
-    } else if dep.latest_version.as_ref().unwrap() == &dep.version {
-        "✅ up-to-date"
-    } else {
-        "️⚠️ outdated"
+fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy>> {
+    let mut policies: Vec<Box<dyn Policy>> = vec![];
+    let retriever = Arc::new(RwLock::new(RepositoryRetriever::new()));
+
+    if config.policies.contributors_ratio.enabled {
+        policies.push(Box::new(ContributorsRatio::new(
+            retriever.clone(),
+            config
+                .policies
+                .contributors_ratio
+                .max_number_of_releases_to_check,
+            config.policies.contributors_ratio.max_contributor_ratio,
+        )));
     }
+
+    if config.policies.min_number_of_releases_required.enabled {
+        let clock = Box::new(infra::clock::Clock::default());
+        policies.push(Box::new(MinNumberOfReleasesRequired::new(
+            retriever,
+            config
+                .policies
+                .min_number_of_releases_required
+                .min_number_of_releases,
+            Duration::from_secs(config.policies.min_number_of_releases_required.days * 86400),
+            clock,
+        )));
+    }
+
+    policies
+}
+
+fn check_if_dependency_is_okay(policies: &[Box<dyn Policy>], dep: &Dependency) -> String {
+    for policy in policies {
+        match policy.evaluate(dep) {
+            Ok(result) => match result {
+                Evaluation::Pass => continue,
+                Evaluation::Fail(reason) => {
+                    return format!("Fail due to: {}", reason);
+                }
+            },
+            Err(error) => {
+                return format!("Error: {}", error);
+            }
+        }
+    }
+    "PASS".to_owned()
 }
 
 fn load_logger() -> Result<(), Box<dyn std::error::Error>> {

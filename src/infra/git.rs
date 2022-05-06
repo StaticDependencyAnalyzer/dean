@@ -37,11 +37,12 @@ impl CommitRetriever for RepositoryRetriever {
     }
 
     fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
-        let mut lock = self
+        if let Some(repository) = self
             .cache
             .lock()
-            .map_err(|e| format!("Could not read cache: {}", e))?;
-        if let Some(repository) = lock.get_mut(repository_url) {
+            .map_err(|e| format!("Could not read cache: {}", e))?
+            .get_mut(repository_url)
+        {
             return Ok(repository.all_tags.clone());
         }
         Ok(self.save_repository_result(repository_url)?.all_tags)
@@ -115,7 +116,7 @@ impl Repository {
         let mut tags = vec![];
         self.repository.tag_foreach(|oid, name| {
             if let Ok(obj) = self.repository.find_object(oid, None) {
-                if let Some(commit) = obj.as_commit() {
+                if let Ok(commit) = obj.peel_to_commit() {
                     tags.push(Tag {
                         name: String::from_utf8_lossy(name).replace("refs/tags/", ""),
                         commit_id: commit.id().to_string(),
@@ -166,10 +167,18 @@ impl Repository {
         let mut result = HashMap::new();
 
         let tags: Vec<_> = self.all_tags()?.into_iter().rev().collect();
+        if tags.is_empty() {
+            return Ok(result);
+        }
+
         let mut commit_buffer = Vec::new();
         for i in 0..tags.len() - 1 {
-            let first_tag = tags.get(i).unwrap();
-            let second_tag = tags.get(i + 1).unwrap();
+            let first_tag = tags
+                .get(i)
+                .with_context(|| "unable to retrieve first tag")?;
+            let second_tag = tags
+                .get(i + 1)
+                .with_context(|| "unable to retrieve second tag")?;
             let first_oid = Oid::from_str(&first_tag.commit_id)?;
             let second_oid = Oid::from_str(&second_tag.commit_id)?;
 
@@ -336,5 +345,15 @@ mod tests {
         );
 
         assert!(repository_retriever.all_tags(repository_url).unwrap().len() >= 76);
+    }
+
+    #[test]
+    fn it_retrieves_the_tags_for_yocto_queue() {
+        let repository_retriever = RepositoryRetriever::new();
+        let tags = repository_retriever
+            .all_tags("https://github.com/sindresorhus/yocto-queue")
+            .unwrap();
+
+        assert!(tags.len() >= 2_usize);
     }
 }

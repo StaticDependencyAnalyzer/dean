@@ -1,40 +1,47 @@
 use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
-use crate::pkg::Repository;
+
+use crate::Dependency;
 use anyhow::Context;
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::error::Error;
+use std::sync::{Arc, RwLock};
 
 pub struct ContributorsRatio {
-    retriever: Box<dyn CommitRetriever>,
+    retriever: Arc<RwLock<dyn CommitRetriever>>,
     max_number_of_releases_to_check: usize,
     max_contributor_ratio: f64,
 }
 
 impl Policy for ContributorsRatio {
     #[allow(clippy::cast_precision_loss)]
-    fn evaluate(&self, repository: &Repository) -> Result<Evaluation, Box<dyn Error>> {
-        let repo_url = repository
+    fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
+        let repo_url = dependency
+            .repository
             .url()
             .context("the repository doesn't have a URL")?;
 
         let all_tags = self
             .retriever
+            .read()
+            .map_err(|_| "failed to retrieve read lock")?
             .all_tags(&repo_url)
             .map_err(|e| format!("unable to retrieve all tags for repo {}: {}", &repo_url, e))?
             .into_iter();
         let tags_to_check = all_tags.rev().take(self.max_number_of_releases_to_check);
         let tag_names = tags_to_check.map(|tag| tag.name).collect::<HashSet<_>>();
 
-        let all_commits_for_each_tag =
-            self.retriever
-                .commits_for_each_tag(&repo_url)
-                .map_err(|e| {
-                    format!(
-                        "unable to retrieve commits for each tag for repo {}: {}",
-                        &repo_url, e
-                    )
-                })?;
+        let all_commits_for_each_tag = self
+            .retriever
+            .read()
+            .map_err(|_| "failed to retrieve read lock")?
+            .commits_for_each_tag(&repo_url)
+            .map_err(|e| {
+                format!(
+                    "unable to retrieve commits for each tag for repo {}: {}",
+                    &repo_url, e
+                )
+            })?;
 
         let commits_to_check = all_commits_for_each_tag
             .into_iter()
@@ -57,9 +64,12 @@ impl Policy for ContributorsRatio {
             .into_iter()
             .map(|(count, author)| (count as f64 / all_authors_count as f64, author));
 
-        for (rate, _) in authors_with_rate {
+        for (rate, author) in authors_with_rate {
             if rate > self.max_contributor_ratio {
-                return Ok(Evaluation::Fail);
+                return Ok(Evaluation::Fail(format!(
+                    "the rate of contribution is too high ({} > {}) for author {}",
+                    rate, self.max_contributor_ratio, author
+                )));
             }
         }
         Ok(Evaluation::Pass)
@@ -68,7 +78,7 @@ impl Policy for ContributorsRatio {
 
 impl ContributorsRatio {
     pub fn new(
-        retriever: Box<dyn CommitRetriever>,
+        retriever: Arc<RwLock<dyn CommitRetriever>>,
         max_number_of_releases_to_check: usize,
         max_contributor_ratio: f64,
     ) -> Self {
@@ -92,8 +102,10 @@ mod tests {
 
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_lower_than_90_percent_it_should_pass() {
-        let mut retriever = Box::new(MockCommitRetriever::new());
+        let retriever = Arc::new(RwLock::new(MockCommitRetriever::new()));
         retriever
+            .write()
+            .expect("unable to retrieve write lock")
             .expect_all_tags()
             .with(eq("https://github.com/some_org/some_repo"))
             .returning(|_| {
@@ -115,42 +127,50 @@ mod tests {
                     },
                 ])
             });
-        retriever.expect_commits_for_each_tag().returning(|_| {
-            Ok({
-                let mut map = HashMap::new();
-                map.insert(
-                    "v0.1.4".to_string(),
-                    vec![
-                        Commit {
-                            id: "2134324".to_string(),
-                            author_name: "SomeName".to_string(),
-                            author_email: "SomeAuthor".to_string(),
-                            creation_timestamp: 0,
-                        },
-                        Commit {
-                            id: "324213432".to_string(),
-                            author_name: "SomeOtherName".to_string(),
-                            author_email: "SomeOtherAuthor".to_string(),
-                            creation_timestamp: 0,
-                        },
-                    ],
-                );
-                map
-            })
-        });
+        retriever
+            .write()
+            .expect("unable to retrieve write lock")
+            .expect_commits_for_each_tag()
+            .returning(|_| {
+                Ok({
+                    let mut map = HashMap::new();
+                    map.insert(
+                        "v0.1.4".to_string(),
+                        vec![
+                            Commit {
+                                id: "2134324".to_string(),
+                                author_name: "SomeName".to_string(),
+                                author_email: "SomeAuthor".to_string(),
+                                creation_timestamp: 0,
+                            },
+                            Commit {
+                                id: "324213432".to_string(),
+                                author_name: "SomeOtherName".to_string(),
+                                author_email: "SomeOtherAuthor".to_string(),
+                                creation_timestamp: 0,
+                            },
+                        ],
+                    );
+                    map
+                })
+            });
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
-        let result = contributors_ratio_policy.evaluate(&GitHub {
+        let mut dependency = Dependency::default();
+        dependency.repository = GitHub {
             organization: "some_org".to_string(),
             name: "some_repo".to_string(),
-        });
+        };
+        let result = contributors_ratio_policy.evaluate(&dependency);
 
         result.should(be_ok(equal(Evaluation::Pass)));
     }
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_higher_than_90_percent_it_should_fail() {
-        let mut retriever = Box::new(MockCommitRetriever::new());
+        let retriever = Arc::new(RwLock::new(MockCommitRetriever::new()));
         retriever
+            .write()
+            .expect("unable to retrieve write lock")
             .expect_all_tags()
             .with(eq("https://github.com/some_org/some_repo"))
             .returning(|_| {
@@ -172,28 +192,36 @@ mod tests {
                     },
                 ])
             });
-        retriever.expect_commits_for_each_tag().returning(|_| {
-            Ok({
-                let mut map = HashMap::new();
-                map.insert(
-                    "v0.1.4".to_string(),
-                    vec![Commit {
-                        id: "2134324".to_string(),
-                        author_name: "SomeName".to_string(),
-                        author_email: "SomeAuthor".to_string(),
-                        creation_timestamp: 0,
-                    }],
-                );
-                map
-            })
-        });
+        retriever
+            .write()
+            .expect("unable to retrieve write lock")
+            .expect_commits_for_each_tag()
+            .returning(|_| {
+                Ok({
+                    let mut map = HashMap::new();
+                    map.insert(
+                        "v0.1.4".to_string(),
+                        vec![Commit {
+                            id: "2134324".to_string(),
+                            author_name: "SomeName".to_string(),
+                            author_email: "SomeAuthor".to_string(),
+                            creation_timestamp: 0,
+                        }],
+                    );
+                    map
+                })
+            });
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
-        let result = contributors_ratio_policy.evaluate(&GitHub {
+        let mut dependency = Dependency::default();
+        dependency.repository = GitHub {
             organization: "some_org".to_string(),
             name: "some_repo".to_string(),
-        });
+        };
+        let result = contributors_ratio_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Fail)));
+        result.should(be_ok(equal(Evaluation::Fail(
+            "the rate of contribution is too high (1 > 0.9) for author SomeAuthor".to_owned(),
+        ))));
     }
 }
