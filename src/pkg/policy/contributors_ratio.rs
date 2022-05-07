@@ -5,10 +5,11 @@ use anyhow::Context;
 use itertools::Itertools;
 use std::collections::HashSet;
 use std::error::Error;
-use std::sync::{Arc, RwLock};
+
+use std::sync::Arc;
 
 pub struct ContributorsRatio {
-    retriever: Arc<RwLock<dyn CommitRetriever>>,
+    retriever: Arc<dyn CommitRetriever + Send + Sync>,
     max_number_of_releases_to_check: usize,
     max_contributor_ratio: f64,
 }
@@ -23,25 +24,21 @@ impl Policy for ContributorsRatio {
 
         let all_tags = self
             .retriever
-            .read()
-            .map_err(|_| "failed to retrieve read lock")?
             .all_tags(&repo_url)
             .map_err(|e| format!("unable to retrieve all tags for repo {}: {}", &repo_url, e))?
             .into_iter();
         let tags_to_check = all_tags.rev().take(self.max_number_of_releases_to_check);
         let tag_names = tags_to_check.map(|tag| tag.name).collect::<HashSet<_>>();
 
-        let all_commits_for_each_tag = self
-            .retriever
-            .read()
-            .map_err(|_| "failed to retrieve read lock")?
-            .commits_for_each_tag(&repo_url)
-            .map_err(|e| {
-                format!(
-                    "unable to retrieve commits for each tag for repo {}: {}",
-                    &repo_url, e
-                )
-            })?;
+        let all_commits_for_each_tag =
+            self.retriever
+                .commits_for_each_tag(&repo_url)
+                .map_err(|e| {
+                    format!(
+                        "unable to retrieve commits for each tag for repo {}: {}",
+                        &repo_url, e
+                    )
+                })?;
 
         let commits_to_check = all_commits_for_each_tag
             .into_iter()
@@ -78,7 +75,7 @@ impl Policy for ContributorsRatio {
 
 impl ContributorsRatio {
     pub fn new(
-        retriever: Arc<RwLock<dyn CommitRetriever>>,
+        retriever: Arc<dyn CommitRetriever + Send + Sync>,
         max_number_of_releases_to_check: usize,
         max_contributor_ratio: f64,
     ) -> Self {
@@ -102,10 +99,9 @@ mod tests {
 
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_lower_than_90_percent_it_should_pass() {
-        let retriever = Arc::new(RwLock::new(MockCommitRetriever::new()));
-        retriever
-            .write()
-            .expect("unable to retrieve write lock")
+        let mut retriever = Arc::new(MockCommitRetriever::new());
+        Arc::get_mut(&mut retriever)
+            .unwrap()
             .expect_all_tags()
             .with(eq("https://github.com/some_org/some_repo"))
             .returning(|_| {
@@ -127,9 +123,8 @@ mod tests {
                     },
                 ])
             });
-        retriever
-            .write()
-            .expect("unable to retrieve write lock")
+        Arc::get_mut(&mut retriever)
+            .unwrap()
             .expect_commits_for_each_tag()
             .returning(|_| {
                 Ok({
@@ -156,10 +151,12 @@ mod tests {
             });
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
-        let mut dependency = Dependency::default();
-        dependency.repository = GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
+        let dependency = Dependency {
+            repository: GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            },
+            ..Dependency::default()
         };
         let result = contributors_ratio_policy.evaluate(&dependency);
 
@@ -167,10 +164,9 @@ mod tests {
     }
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_higher_than_90_percent_it_should_fail() {
-        let retriever = Arc::new(RwLock::new(MockCommitRetriever::new()));
-        retriever
-            .write()
-            .expect("unable to retrieve write lock")
+        let mut retriever = Arc::new(MockCommitRetriever::new());
+        Arc::get_mut(&mut retriever)
+            .unwrap()
             .expect_all_tags()
             .with(eq("https://github.com/some_org/some_repo"))
             .returning(|_| {
@@ -192,9 +188,8 @@ mod tests {
                     },
                 ])
             });
-        retriever
-            .write()
-            .expect("unable to retrieve write lock")
+        Arc::get_mut(&mut retriever)
+            .unwrap()
             .expect_commits_for_each_tag()
             .returning(|_| {
                 Ok({
@@ -213,11 +208,14 @@ mod tests {
             });
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
-        let mut dependency = Dependency::default();
-        dependency.repository = GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
+        let dependency = Dependency {
+            repository: GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            },
+            ..Dependency::default()
         };
+
         let result = contributors_ratio_policy.evaluate(&dependency);
 
         result.should(be_ok(equal(Evaluation::Fail(

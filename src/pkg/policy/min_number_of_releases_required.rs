@@ -3,14 +3,15 @@ use crate::pkg::policy::Policy;
 use crate::Dependency;
 use anyhow::Context;
 use std::error::Error;
-use std::sync::{Arc, RwLock};
+
+use std::sync::Arc;
 use std::time::Duration;
 
 pub struct MinNumberOfReleasesRequired {
-    retriever: Arc<RwLock<dyn CommitRetriever>>,
+    retriever: Arc<dyn CommitRetriever + Sync + Send>,
     number_of_releases: usize,
     duration: Duration,
-    clock: Box<dyn Clock>,
+    clock: Box<dyn Clock + Sync + Send>,
 }
 
 impl Policy for MinNumberOfReleasesRequired {
@@ -19,11 +20,7 @@ impl Policy for MinNumberOfReleasesRequired {
             .repository
             .url()
             .context("the repository did not contain a URL")?;
-        let all_tags = self
-            .retriever
-            .read()
-            .map_err(|_| "unable to retrieve read lock")?
-            .all_tags(&repository_url)?;
+        let all_tags = self.retriever.all_tags(&repository_url)?;
 
         let now = self.clock.now_timestamp();
         let num_tags_in_range = all_tags
@@ -48,10 +45,10 @@ impl Policy for MinNumberOfReleasesRequired {
 
 impl MinNumberOfReleasesRequired {
     pub fn new(
-        retriever: Arc<RwLock<dyn CommitRetriever>>,
+        retriever: Arc<dyn CommitRetriever + Sync + Send>,
         number_of_releases: usize,
         duration: Duration,
-        clock: Box<dyn Clock>,
+        clock: Box<dyn Clock + Sync + Send>,
     ) -> Self {
         Self {
             retriever,
@@ -77,10 +74,9 @@ mod tests {
 
     #[test]
     fn when_there_are_more_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
-        let retriever = Arc::new(RwLock::new(MockCommitRetriever::new()));
-        retriever
-            .write()
-            .expect("unable to retrieve write lock")
+        let mut retriever = Arc::new(MockCommitRetriever::new());
+        Arc::get_mut(&mut retriever)
+            .unwrap()
             .expect_all_tags()
             .with(eq("https://github.com/some_org/some_repo"))
             .returning(|_| {
@@ -113,10 +109,12 @@ mod tests {
             clock,
         );
 
-        let mut dependency = Dependency::default();
-        dependency.repository = GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
+        let dependency = Dependency {
+            repository: GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            },
+            ..Dependency::default()
         };
         let result: Result<Evaluation, Box<dyn Error>> =
             number_of_releases_policy.evaluate(&dependency);
@@ -126,10 +124,9 @@ mod tests {
 
     #[test]
     fn when_there_are_less_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
-        let retriever = Arc::new(RwLock::new(MockCommitRetriever::new()));
-        retriever
-            .write()
-            .expect("unable to retrieve write lock")
+        let mut retriever = Arc::new(MockCommitRetriever::new());
+        Arc::get_mut(&mut retriever)
+            .unwrap()
             .expect_all_tags()
             .with(eq("https://github.com/some_org/some_repo"))
             .returning(|_| {
@@ -149,10 +146,12 @@ mod tests {
             Duration::from_secs(6 * months_in_seconds),
             clock,
         );
-        let mut dependency = Dependency::default();
-        dependency.repository = GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
+        let dependency = Dependency {
+            repository: GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            },
+            ..Dependency::default()
         };
         let result: Result<Evaluation, Box<dyn Error>> =
             number_of_releases_policy.evaluate(&dependency);
@@ -164,10 +163,9 @@ mod tests {
 
     #[test]
     fn when_the_releases_are_too_old_it_should_pass_the_policy_evaluation() {
-        let retriever = Arc::new(RwLock::new(MockCommitRetriever::new()));
-        retriever
-            .write()
-            .expect("unable to retrieve write lock")
+        let mut retriever = Arc::new(MockCommitRetriever::new());
+        Arc::get_mut(&mut retriever)
+            .unwrap()
             .expect_all_tags()
             .with(eq("https://github.com/some_org/some_repo"))
             .returning(|_| {
@@ -200,10 +198,12 @@ mod tests {
             clock,
         );
 
-        let mut dependency = Dependency::default();
-        dependency.repository = GitHub {
-            organization: "some_org".to_string(),
-            name: "some_repo".to_string(),
+        let dependency = Dependency {
+            repository: GitHub {
+                organization: "some_org".to_string(),
+                name: "some_repo".to_string(),
+            },
+            ..Dependency::default()
         };
         let result: Result<Evaluation, Box<dyn Error>> =
             number_of_releases_policy.evaluate(&dependency);

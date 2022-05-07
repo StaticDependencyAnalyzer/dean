@@ -8,10 +8,12 @@ mod pkg;
 
 use std::fs::File;
 use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
+
+use std::sync::Arc;
 use std::time::Duration;
 
 use log::LevelFilter;
+use rayon::prelude::*;
 
 use crate::cmd::parse_args;
 use crate::http::Client;
@@ -38,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let policies = policies_from_config(&config);
 
     reader.retrieve_from_reader(file).map(|x| {
-        for dep in &x {
+        x.into_par_iter().for_each(|dep| {
             println!(
                 "{}: {} (latest: {}) - {} - {}",
                 dep.name,
@@ -47,17 +49,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .as_ref()
                     .unwrap_or(&"unknown".to_string()),
                 dep.repository,
-                check_if_dependency_is_okay(&policies, dep)
+                check_if_dependency_is_okay(&policies, &dep)
             );
-        }
+        });
     })?;
 
     Ok(())
 }
 
-fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy>> {
-    let mut policies: Vec<Box<dyn Policy>> = vec![];
-    let retriever = Arc::new(RwLock::new(RepositoryRetriever::new()));
+fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy + Send + Sync>> {
+    let mut policies: Vec<Box<dyn Policy + Send + Sync>> = vec![];
+    let retriever = Arc::new(RepositoryRetriever::new());
 
     if config.policies.contributors_ratio.enabled {
         policies.push(Box::new(ContributorsRatio::new(
@@ -86,8 +88,11 @@ fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy>> {
     policies
 }
 
-fn check_if_dependency_is_okay(policies: &[Box<dyn Policy>], dep: &Dependency) -> String {
-    for policy in policies {
+fn check_if_dependency_is_okay(
+    policies: &[Box<dyn Policy + Send + Sync>],
+    dep: &Dependency,
+) -> String {
+    for policy in policies.iter() {
         match policy.evaluate(dep) {
             Ok(result) => match result {
                 Evaluation::Pass => continue,
