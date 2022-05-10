@@ -1,11 +1,13 @@
-use crate::pkg::policy::{Commit, CommitRetriever, Tag};
-use anyhow::Context;
-use git2::Oid;
-use log::error;
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
 use std::sync;
+
+use anyhow::Context;
+use git2::Oid;
+use log::error;
+
+use crate::pkg::policy::{Commit, CommitRetriever, Tag};
 
 #[derive(Clone)]
 struct RepositoryResult {
@@ -226,9 +228,10 @@ impl Repository {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use expects::matcher::{consist_of, contain_element, equal};
     use expects::Subject;
+
+    use super::*;
 
     #[test]
     fn it_retrieves_the_commits_of_a_repository() {

@@ -8,7 +8,6 @@ mod pkg;
 
 use std::fs::File;
 use std::path::PathBuf;
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,7 +17,6 @@ use rayon::prelude::*;
 use crate::cmd::parse_args;
 use crate::http::Client;
 use crate::infra::git::RepositoryRetriever;
-
 use crate::infra::http;
 use crate::infra::npm::DependencyInfoRetriever;
 use crate::pkg::config::Config;

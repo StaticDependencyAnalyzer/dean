@@ -1,5 +1,6 @@
-use crate::pkg::Repository::Unknown;
 use std::fmt::{Display, Formatter};
+
+use crate::pkg::Repository::Unknown;
 
 pub mod config;
 pub mod npm;

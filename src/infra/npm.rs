@@ -1,8 +1,9 @@
+use regex::Regex;
+use serde_json::Value;
+
 use crate::infra::http;
 use crate::pkg::npm::InfoRetriever;
 use crate::pkg::Repository;
-use regex::Regex;
-use serde_json::Value;
 
 pub struct DependencyInfoRetriever {
     client: http::Client,
@@ -88,11 +89,12 @@ impl InfoRetriever for DependencyInfoRetriever {
 
 #[cfg(test)]
 mod tests {
+    use expects::matcher::{be_ok, equal};
+    use expects::Subject;
+
     use super::DependencyInfoRetriever;
     use crate::pkg::npm::InfoRetriever;
     use crate::pkg::Repository;
-    use expects::matcher::{be_ok, equal};
-    use expects::Subject;
 
     #[test]
     fn retrieves_the_latest_version_of_colors() {

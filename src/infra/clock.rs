@@ -1,5 +1,6 @@
-use crate::pkg::policy;
 use std::time;
+
+use crate::pkg::policy;
 
 #[derive(Default, Copy, Clone)]
 pub struct Clock {}

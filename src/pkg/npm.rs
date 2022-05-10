@@ -1,10 +1,11 @@
+use std::sync::{Arc, RwLock};
+
 use log::info;
 use rayon::prelude::*;
 use serde_json::Value;
 use serde_json::Value::Object;
 
 use crate::pkg::Repository;
-use std::sync::{Arc, RwLock};
 
 #[cfg_attr(test, mockall::automock)]
 pub trait InfoRetriever {
@@ -76,12 +77,13 @@ impl DependencyReader {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use expects::{
         matcher::{be_ok, consist_of},
         Subject,
     };
     use mockall::predicate::eq;
+
+    use super::*;
 
     #[test]
     fn retrieves_all_dependencies() {

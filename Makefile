@@ -8,7 +8,7 @@ lint:
 	cargo clippy
 
 fmt:
-	cargo fmt
+	cargo +nightly fmt
 
 fix:
 	cargo fix --allow-dirty --allow-staged

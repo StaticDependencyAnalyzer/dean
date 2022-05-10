@@ -12,11 +12,12 @@ fn package_manager_from_filename(package_file: &str) -> Option<PackageManager> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use expects::{
         matcher::{be_none, be_some, equal},
         Subject,
     };
+
+    use super::*;
 
     #[test]
     fn it_recognizes_the_npm_package_lock_file() {

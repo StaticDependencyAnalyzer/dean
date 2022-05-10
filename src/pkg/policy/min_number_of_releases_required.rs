@@ -1,11 +1,12 @@
+use std::error::Error;
+use std::sync::Arc;
+use std::time::Duration;
+
+use anyhow::Context;
+
 use super::{Clock, CommitRetriever, Evaluation};
 use crate::pkg::policy::Policy;
 use crate::Dependency;
-use anyhow::Context;
-use std::error::Error;
-
-use std::sync::Arc;
-use std::time::Duration;
 
 pub struct MinNumberOfReleasesRequired {
     retriever: Arc<dyn CommitRetriever + Sync + Send>,
@@ -61,16 +62,17 @@ impl MinNumberOfReleasesRequired {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{MockClock, MockCommitRetriever, Tag};
-    use super::*;
-    use crate::pkg::policy::Evaluation;
+    use std::time::Duration;
+
     use expects::matcher::{be_ok, equal};
     use expects::Subject;
     use mockall::predicate::eq;
 
+    use super::super::{MockClock, MockCommitRetriever, Tag};
+    use super::*;
+    use crate::pkg::policy::Evaluation;
     use crate::pkg::Repository::GitHub;
     use crate::Dependency;
-    use std::time::Duration;
 
     #[test]
     fn when_there_are_more_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {

@@ -1,12 +1,12 @@
-use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
-
-use crate::Dependency;
-use anyhow::Context;
-use itertools::Itertools;
 use std::collections::HashSet;
 use std::error::Error;
-
 use std::sync::Arc;
+
+use anyhow::Context;
+use itertools::Itertools;
+
+use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
+use crate::Dependency;
 
 pub struct ContributorsRatio {
     retriever: Arc<dyn CommitRetriever + Send + Sync>,
@@ -89,13 +89,15 @@ impl ContributorsRatio {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Commit, MockCommitRetriever, Tag};
-    use super::*;
-    use crate::pkg::Repository::GitHub;
+    use std::collections::HashMap;
+
     use expects::matcher::{be_ok, equal};
     use expects::Subject;
     use mockall::predicate::eq;
-    use std::collections::HashMap;
+
+    use super::super::{Commit, MockCommitRetriever, Tag};
+    use super::*;
+    use crate::pkg::Repository::GitHub;
 
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_lower_than_90_percent_it_should_pass() {

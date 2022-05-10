@@ -1,5 +1,6 @@
-use serde::{Deserialize, Serialize};
 use std::error::Error;
+
+use serde::{Deserialize, Serialize};
 
 mod contributors_ratio;
 mod min_number_of_releases_required;
@@ -33,9 +34,10 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use expects::matcher::equal;
     use expects::Subject;
+
+    use super::*;
 
     #[test]
     fn it_loads_the_default_config_from_an_empty_file() {
