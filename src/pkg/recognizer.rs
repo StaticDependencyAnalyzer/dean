@@ -3,10 +3,11 @@ pub enum PackageManager {
     Npm,
 }
 
-fn package_manager_from_filename(package_file: &str) -> Option<PackageManager> {
-    match package_file {
-        "package-lock.json" => Some(PackageManager::Npm),
-        _ => None,
+pub fn package_manager_from_filename(package_file: &str) -> Option<PackageManager> {
+    if package_file.ends_with("package-lock.json") {
+        Some(PackageManager::Npm)
+    } else {
+        None
     }
 }
 
@@ -22,6 +23,12 @@ mod tests {
     #[test]
     fn it_recognizes_the_npm_package_lock_file() {
         package_manager_from_filename("package-lock.json")
+            .should(be_some(equal(PackageManager::Npm)));
+    }
+
+    #[test]
+    fn it_recognizes_the_npm_package_lock_file_even_with_full_path() {
+        package_manager_from_filename("/path/to/package-lock.json")
             .should(be_some(equal(PackageManager::Npm)));
     }
 

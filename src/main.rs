@@ -11,6 +11,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
+use anyhow::Context;
 use log::LevelFilter;
 use rayon::prelude::*;
 
@@ -20,16 +21,31 @@ use crate::infra::git::RepositoryRetriever;
 use crate::infra::http;
 use crate::infra::npm::DependencyInfoRetriever;
 use crate::pkg::config::Config;
-use crate::pkg::npm::{Dependency, DependencyReader};
+use crate::pkg::npm::{Dependency, DependencyReader, InfoRetriever};
 use crate::pkg::policy::{ContributorsRatio, Evaluation, MinNumberOfReleasesRequired, Policy};
+use crate::pkg::recognizer::{package_manager_from_filename, PackageManager};
+
+fn info_retriever_from_package_manager(
+    package_manager: &PackageManager,
+) -> Result<Box<dyn InfoRetriever + Sync + Send>, Box<dyn std::error::Error>> {
+    let http_client = create_http_client()?;
+    match package_manager {
+        PackageManager::Npm => Ok(Box::new(DependencyInfoRetriever::new(http_client))),
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
     load_logger()?;
     let config = load_config_from_file();
 
-    let http_client = create_http_client()?;
-    let retriever = Box::new(DependencyInfoRetriever::new(http_client));
+    let package_manager = package_manager_from_filename(&args.lock_file).with_context(|| {
+        format!(
+            "unable to determine package manager for file: {}",
+            &args.lock_file
+        )
+    })?;
+    let retriever = info_retriever_from_package_manager(&package_manager)?;
     let reader = DependencyReader::new(retriever);
 
     let file = File::open(&args.lock_file)
@@ -120,7 +136,7 @@ fn create_http_client() -> Result<Client, Box<dyn std::error::Error>> {
         .timeout(Duration::from_secs(600))
         .build()?;
 
-    Ok(http::Client::new(reqwest_client))
+    Ok(Client::new(reqwest_client))
 }
 
 fn load_config_from_file() -> Config {

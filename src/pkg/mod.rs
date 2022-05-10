@@ -5,7 +5,7 @@ use crate::pkg::Repository::Unknown;
 pub mod config;
 pub mod npm;
 pub mod policy;
-mod recognizer;
+pub mod recognizer;
 
 #[cfg_attr(test, derive(Clone, PartialEq, Debug))]
 pub enum Repository {
