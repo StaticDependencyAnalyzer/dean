@@ -13,12 +13,24 @@ pub trait InfoRetriever {
     fn repository(&self, dependency: &str) -> Result<Repository, String>;
 }
 
+pub trait DependencyRetriever {
+    fn dependencies(&self) -> Result<Vec<Dependency>, String>;
+}
+
 #[cfg_attr(test, derive(Clone, PartialEq, Debug))]
 pub enum Repository {
     Unknown,
     GitHub { organization: String, name: String },
     GitLab { organization: String, name: String },
     Raw { address: String },
+}
+
+#[cfg_attr(test, derive(Clone, PartialEq, Debug, Default))]
+pub struct Dependency {
+    pub name: String,
+    pub version: String,
+    pub latest_version: Option<String>,
+    pub repository: Repository,
 }
 
 impl Default for Repository {

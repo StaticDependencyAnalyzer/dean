@@ -1,4 +1,5 @@
-#[cfg_attr(test, derive(Copy, Clone, Debug, PartialEq))]
+#[derive(Copy, Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum PackageManager {
     Npm,
     Cargo,

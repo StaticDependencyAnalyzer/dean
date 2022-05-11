@@ -21,13 +21,12 @@ use crate::infra::git::RepositoryRetriever;
 use crate::infra::http;
 use crate::infra::npm::DependencyInfoRetriever;
 use crate::pkg::config::Config;
-use crate::pkg::npm::{Dependency, DependencyReader};
 use crate::pkg::policy::{ContributorsRatio, Evaluation, MinNumberOfReleasesRequired, Policy};
 use crate::pkg::recognizer::{package_manager_from_filename, PackageManager};
-use crate::pkg::InfoRetriever;
+use crate::pkg::{npm, Dependency, DependencyRetriever, InfoRetriever};
 
 fn info_retriever_from_package_manager(
-    package_manager: &PackageManager,
+    package_manager: PackageManager,
 ) -> Result<Box<dyn InfoRetriever + Sync + Send>, Box<dyn std::error::Error>> {
     let http_client = create_http_client()?;
     match package_manager {
@@ -47,15 +46,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &args.lock_file
         )
     })?;
-    let retriever = info_retriever_from_package_manager(&package_manager)?;
-    let reader = DependencyReader::new(retriever);
+    let retriever = info_retriever_from_package_manager(package_manager)?;
 
     let file = File::open(&args.lock_file)
         .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
 
+    let reader = npm::DependencyReader::new(file, retriever);
+
     let policies = policies_from_config(&config);
 
-    reader.retrieve_from_reader(file).map(|x| {
+    reader.dependencies().map(|x| {
         x.into_par_iter().for_each(|dep| {
             println!(
                 "{}: {} (latest: {}) - {} - {}",

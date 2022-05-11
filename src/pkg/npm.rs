@@ -1,39 +1,37 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use log::info;
 use rayon::prelude::*;
 use serde_json::Value;
 use serde_json::Value::Object;
 
-use crate::pkg::{InfoRetriever, Repository};
+use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
-pub struct DependencyReader {
+pub struct DependencyReader<T>
+where
+    T: std::io::Read,
+{
     npm_info_retriever: Arc<dyn InfoRetriever + Send + Sync>,
+    reader: Mutex<T>,
 }
 
-#[cfg_attr(test, derive(Clone, PartialEq, Debug, Default))]
-pub struct Dependency {
-    pub name: String,
-    pub version: String,
-    pub latest_version: Option<String>,
-    pub repository: Repository,
-}
-
-impl DependencyReader {
-    pub fn retrieve_from_reader<T>(&self, reader: T) -> Result<Vec<Dependency>, String>
-    where
-        T: std::io::Read,
-    {
-        let result: Value = serde_json::from_reader(reader).map_err(|e| e.to_string())?;
+impl<T> DependencyRetriever for DependencyReader<T>
+where
+    T: std::io::Read,
+{
+    fn dependencies(&self) -> Result<Vec<Dependency>, String> {
+        let result: Value = serde_json::from_reader(&mut *self.reader.lock().unwrap())
+            .map_err(|e| e.to_string())?;
         if let Object(dependencies) = &result["dependencies"] {
             let deps: Vec<_> = dependencies
                 .into_iter()
                 .map(|(name, value)| (name, value["version"].as_str().map(ToString::to_string)))
                 .collect();
 
+            let npm_info_retriever = self.npm_info_retriever.clone();
             deps.into_par_iter()
                 .map(|(name, version)| {
-                    let retriever = self.npm_info_retriever.clone();
+                    let retriever = npm_info_retriever.clone();
                     if let Some(version) = version {
                         info!(
                             target: "npm-dependency-retriever",
@@ -57,9 +55,13 @@ impl DependencyReader {
     }
 }
 
-impl DependencyReader {
-    pub fn new(retriever: Box<dyn InfoRetriever + Send + Sync>) -> Self {
-        DependencyReader {
+impl<T> DependencyReader<T>
+where
+    T: std::io::Read,
+{
+    pub fn new(reader: T, retriever: Box<dyn InfoRetriever + Send + Sync>) -> Self {
+        Self {
+            reader: reader.into(),
             npm_info_retriever: retriever.into(),
         }
     }
@@ -94,9 +96,9 @@ mod tests {
                 })
             })
             .times(1);
-        let dependency_reader = DependencyReader::new(retriever);
 
-        let dependencies = dependency_reader.retrieve_from_reader(npm_package_lock().as_bytes());
+        let dependency_reader = DependencyReader::new(npm_package_lock(), retriever);
+        let dependencies = dependency_reader.dependencies();
 
         dependencies.should(be_ok(consist_of(&[Dependency {
             name: "colors".into(),
@@ -109,9 +111,8 @@ mod tests {
         }])));
     }
 
-    fn npm_package_lock() -> String {
-        String::from(
-            r#"{
+    fn npm_package_lock() -> &'static [u8] {
+        r#"{
   "name": "foo",
   "version": "1.0.0",
   "lockfileVersion": 2,
@@ -142,7 +143,6 @@ mod tests {
       "integrity": "sha512-a+UqTh4kgZg/SlGvfbzDHpgRu7AAQOmmqRHJnxhRZICKFUT91brVhNNt58CMWU9PsBbv3PDCZUHbVxuDiH2mtA=="
     }
   }
-}"#,
-        )
+}"#.as_bytes()
     }
 }
