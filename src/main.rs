@@ -31,6 +31,7 @@ fn info_retriever_from_package_manager(
     let http_client = create_http_client()?;
     match package_manager {
         PackageManager::Npm => Ok(Box::new(DependencyInfoRetriever::new(http_client))),
+        PackageManager::Cargo => Err("Cargo is not supported yet".into()),
     }
 }
 
