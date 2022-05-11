@@ -136,10 +136,10 @@ impl Repository {
         let mut revwalk = self
             .repository
             .revwalk()
-            .with_context(|| "unable to create a revwalk for repository")?;
+            .context("unable to create a revwalk for repository")?;
         revwalk
             .push_head()
-            .with_context(|| "unable to push head to revwalk".to_string())?;
+            .context("unable to push head to revwalk")?;
 
         let commits = revwalk
             .into_iter()
@@ -175,12 +175,8 @@ impl Repository {
 
         let mut commit_buffer = Vec::new();
         for i in 0..tags.len() - 1 {
-            let first_tag = tags
-                .get(i)
-                .with_context(|| "unable to retrieve first tag")?;
-            let second_tag = tags
-                .get(i + 1)
-                .with_context(|| "unable to retrieve second tag")?;
+            let first_tag = tags.get(i).context("unable to retrieve first tag")?;
+            let second_tag = tags.get(i + 1).context("unable to retrieve second tag")?;
             let first_oid = Oid::from_str(&first_tag.commit_id)?;
             let second_oid = Oid::from_str(&second_tag.commit_id)?;
 
@@ -209,12 +205,12 @@ impl Repository {
         let author_email = commit
             .author()
             .email()
-            .with_context(|| "unable to retrieve author email".to_string())?
+            .context("unable to retrieve author email")?
             .to_string();
         let author_name = commit
             .author()
             .name()
-            .with_context(|| "unable to retrieve author name".to_string())?
+            .context("unable to retrieve author name")?
             .to_string();
 
         Ok(Commit {
