@@ -7,6 +7,12 @@ pub mod npm;
 pub mod policy;
 pub mod recognizer;
 
+#[cfg_attr(test, mockall::automock)]
+pub trait InfoRetriever {
+    fn latest_version(&self, dependency: &str) -> Result<String, String>;
+    fn repository(&self, dependency: &str) -> Result<Repository, String>;
+}
+
 #[cfg_attr(test, derive(Clone, PartialEq, Debug))]
 pub enum Repository {
     Unknown,

@@ -37,8 +37,7 @@ mod tests {
 
     #[test]
     fn it_recognizes_the_cargo_package_lock_file() {
-        package_manager_from_filename("Cargo.lock")
-            .should(be_some(equal(PackageManager::Cargo)));
+        package_manager_from_filename("Cargo.lock").should(be_some(equal(PackageManager::Cargo)));
     }
 
     #[test]

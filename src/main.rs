@@ -21,9 +21,10 @@ use crate::infra::git::RepositoryRetriever;
 use crate::infra::http;
 use crate::infra::npm::DependencyInfoRetriever;
 use crate::pkg::config::Config;
-use crate::pkg::npm::{Dependency, DependencyReader, InfoRetriever};
+use crate::pkg::npm::{Dependency, DependencyReader};
 use crate::pkg::policy::{ContributorsRatio, Evaluation, MinNumberOfReleasesRequired, Policy};
 use crate::pkg::recognizer::{package_manager_from_filename, PackageManager};
+use crate::pkg::InfoRetriever;
 
 fn info_retriever_from_package_manager(
     package_manager: &PackageManager,

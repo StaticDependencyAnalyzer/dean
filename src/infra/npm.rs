@@ -2,8 +2,8 @@ use regex::Regex;
 use serde_json::Value;
 
 use crate::infra::http;
-use crate::pkg::npm::InfoRetriever;
 use crate::pkg::Repository;
+use crate::InfoRetriever;
 
 pub struct DependencyInfoRetriever {
     client: http::Client,
@@ -93,8 +93,8 @@ mod tests {
     use expects::Subject;
 
     use super::DependencyInfoRetriever;
-    use crate::pkg::npm::InfoRetriever;
     use crate::pkg::Repository;
+    use crate::InfoRetriever;
 
     #[test]
     fn retrieves_the_latest_version_of_colors() {

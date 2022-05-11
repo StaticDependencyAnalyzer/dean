@@ -5,13 +5,7 @@ use rayon::prelude::*;
 use serde_json::Value;
 use serde_json::Value::Object;
 
-use crate::pkg::Repository;
-
-#[cfg_attr(test, mockall::automock)]
-pub trait InfoRetriever {
-    fn latest_version(&self, dependency: &str) -> Result<String, String>;
-    fn repository(&self, dependency: &str) -> Result<Repository, String>;
-}
+use crate::pkg::{InfoRetriever, Repository};
 
 pub struct DependencyReader {
     npm_info_retriever: Arc<RwLock<Box<dyn InfoRetriever + Send + Sync>>>,
@@ -83,6 +77,7 @@ mod tests {
     };
     use mockall::predicate::eq;
 
+    use super::super::*;
     use super::*;
 
     #[test]
