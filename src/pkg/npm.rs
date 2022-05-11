@@ -1,4 +1,4 @@
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use log::info;
 use rayon::prelude::*;
@@ -8,7 +8,7 @@ use serde_json::Value::Object;
 use crate::pkg::{InfoRetriever, Repository};
 
 pub struct DependencyReader {
-    npm_info_retriever: Arc<RwLock<Box<dyn InfoRetriever + Send + Sync>>>,
+    npm_info_retriever: Arc<dyn InfoRetriever + Send + Sync>,
 }
 
 #[cfg_attr(test, derive(Clone, PartialEq, Debug, Default))]
@@ -43,12 +43,8 @@ impl DependencyReader {
                         Ok(Dependency {
                             name: name.into(),
                             version,
-                            latest_version: retriever.read().unwrap().latest_version(name).ok(),
-                            repository: retriever
-                                .read()
-                                .unwrap()
-                                .repository(name)
-                                .unwrap_or(Repository::Unknown),
+                            latest_version: retriever.latest_version(name).ok(),
+                            repository: retriever.repository(name).unwrap_or(Repository::Unknown),
                         })
                     } else {
                         Err("version not found in map".to_string())
@@ -64,7 +60,7 @@ impl DependencyReader {
 impl DependencyReader {
     pub fn new(retriever: Box<dyn InfoRetriever + Send + Sync>) -> Self {
         DependencyReader {
-            npm_info_retriever: Arc::new(RwLock::new(retriever)),
+            npm_info_retriever: retriever.into(),
         }
     }
 }
@@ -77,7 +73,7 @@ mod tests {
     };
     use mockall::predicate::eq;
 
-    use super::super::*;
+    use super::super::{MockInfoRetriever, Repository};
     use super::*;
 
     #[test]
