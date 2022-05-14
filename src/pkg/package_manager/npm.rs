@@ -77,8 +77,8 @@ mod tests {
     };
     use mockall::predicate::eq;
 
-    use super::super::{MockInfoRetriever, Repository};
     use super::*;
+    use crate::pkg::{MockInfoRetriever, Repository};
 
     #[test]
     fn retrieves_all_dependencies() {

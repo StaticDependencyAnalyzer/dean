@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 pub mod config;
-pub mod npm;
+pub mod package_manager;
 pub mod policy;
 pub mod recognizer;
 
