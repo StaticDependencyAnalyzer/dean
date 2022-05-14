@@ -1,34 +1,16 @@
-use regex::Regex;
 use serde_json::Value;
 
 use crate::infra::http;
 use crate::pkg::Repository;
 
+#[derive(Default)]
 pub struct InfoRetriever {
     client: http::Client,
-    github_registry_regex: Regex,
-    gitlab_registry_regex: Regex,
 }
 
 impl InfoRetriever {
     pub fn new(client: http::Client) -> Self {
-        Self {
-            client,
-            github_registry_regex: Regex::new(
-                ".*?github.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)",
-            )
-            .unwrap(),
-            gitlab_registry_regex: Regex::new(
-                ".*?gitlab.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)",
-            )
-            .unwrap(),
-        }
-    }
-}
-
-impl Default for InfoRetriever {
-    fn default() -> Self {
-        InfoRetriever::new(http::Client::default())
+        Self { client }
     }
 }
 

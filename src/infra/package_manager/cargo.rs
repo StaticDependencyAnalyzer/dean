@@ -3,6 +3,7 @@ use serde_json::{Map, Value};
 use crate::http;
 use crate::pkg::Repository;
 
+#[derive(Default)]
 pub struct InfoRetriever {
     client: http::Client,
 }
@@ -63,12 +64,6 @@ impl crate::InfoRetriever for InfoRetriever {
             .ok_or_else(|| "repository is not a string".to_string())?;
 
         Ok(Repository::parse_url(repository))
-    }
-}
-
-impl Default for InfoRetriever {
-    fn default() -> Self {
-        Self::new(http::Client::default())
     }
 }
 
