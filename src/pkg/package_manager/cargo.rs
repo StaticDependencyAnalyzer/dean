@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use log::info;
+use rayon::prelude::*;
 use toml::Value;
 
 use crate::pkg::Repository;
@@ -38,7 +39,7 @@ where
         let info_retriever = self.cargo_info_retriever.clone();
 
         package_list
-            .iter()
+            .into_par_iter()
             .map(|package| {
                 let name = package
                     .get("name")
