@@ -223,6 +223,7 @@ dependencies = [
  "expects",
  "git2",
  "itertools",
+ "lazy_static",
  "log",
  "mockall",
  "rayon",

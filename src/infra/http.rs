@@ -1,3 +1,5 @@
+use std::io::Read;
+
 use serde::de::DeserializeOwned;
 
 #[derive(Debug)]
@@ -7,7 +9,9 @@ pub struct Response {
 
 impl Response {
     pub fn json<T: DeserializeOwned>(self) -> Result<T, String> {
-        self.inner.json().map_err(|err| err.to_string())
+        let bytes = self.inner.bytes().map_err(|e| e.to_string())?;
+        let contents = String::from_utf8_lossy(&bytes);
+        serde_json::from_str(&contents).map_err(|e| format!("error: {}, contents: {}", e, contents))
     }
 }
 
@@ -24,6 +28,7 @@ impl Client {
     pub fn get(&self, url: &str) -> Result<Response, String> {
         self.client
             .get(url)
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
             .send()
             .map(|response| Response { inner: response })
             .map_err(|err| err.to_string())

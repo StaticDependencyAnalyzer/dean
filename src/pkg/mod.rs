@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
-use crate::pkg::Repository::Unknown;
+use lazy_static::lazy_static;
+use regex::Regex;
 
 pub mod config;
 pub mod npm;
@@ -35,7 +36,7 @@ pub struct Dependency {
 
 impl Default for Repository {
     fn default() -> Self {
-        Unknown
+        Self::Unknown
     }
 }
 
@@ -50,6 +51,43 @@ impl Repository {
             }
             Repository::Raw { address } => Some(address.clone()),
             Repository::Unknown => None,
+        }
+    }
+
+    pub fn parse_url(repository: &str) -> Self {
+        lazy_static! {
+            static ref GITHUB_REGISTRY_REGEX: Regex =
+                Regex::new(".*?github.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)")
+                    .unwrap();
+            static ref GITLAB_REGISTRY_REGEX: Regex =
+                Regex::new(".*?gitlab.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)")
+                    .unwrap();
+        }
+
+        if repository.trim().is_empty() {
+            return Repository::Unknown;
+        }
+
+        if GITHUB_REGISTRY_REGEX.is_match(repository) {
+            let captures = GITHUB_REGISTRY_REGEX.captures(repository).unwrap();
+
+            return Repository::GitHub {
+                organization: captures["organization"].to_string(),
+                name: captures["name"].to_string(),
+            };
+        }
+
+        if GITLAB_REGISTRY_REGEX.is_match(repository) {
+            let captures = GITLAB_REGISTRY_REGEX.captures(repository).unwrap();
+
+            return Repository::GitLab {
+                organization: captures["organization"].to_string(),
+                name: captures["name"].to_string(),
+            };
+        }
+
+        Repository::Raw {
+            address: repository.to_string(),
         }
     }
 }

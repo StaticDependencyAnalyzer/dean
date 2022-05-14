@@ -62,27 +62,7 @@ impl crate::InfoRetriever for InfoRetriever {
 
         let repository = possible_repository.as_ref().unwrap();
 
-        if self.github_registry_regex.is_match(repository) {
-            let captures = self.github_registry_regex.captures(repository).unwrap();
-
-            return Ok(Repository::GitHub {
-                organization: captures["organization"].to_string(),
-                name: captures["name"].to_string(),
-            });
-        }
-
-        if self.gitlab_registry_regex.is_match(repository) {
-            let captures = self.gitlab_registry_regex.captures(repository).unwrap();
-
-            return Ok(Repository::GitLab {
-                organization: captures["organization"].to_string(),
-                name: captures["name"].to_string(),
-            });
-        }
-
-        Ok(Repository::Raw {
-            address: repository.clone(),
-        })
+        Ok(Repository::parse_url(repository))
     }
 }
 
