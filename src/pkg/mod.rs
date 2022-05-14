@@ -1,11 +1,22 @@
 use std::fmt::{Display, Formatter};
 
-use crate::pkg::Repository::Unknown;
+use lazy_static::lazy_static;
+use regex::Regex;
 
 pub mod config;
-pub mod npm;
+pub mod package_manager;
 pub mod policy;
-mod recognizer;
+pub mod recognizer;
+
+#[cfg_attr(test, mockall::automock)]
+pub trait InfoRetriever {
+    fn latest_version(&self, dependency: &str) -> Result<String, String>;
+    fn repository(&self, dependency: &str) -> Result<Repository, String>;
+}
+
+pub trait DependencyRetriever {
+    fn dependencies(&self) -> Result<Vec<Dependency>, String>;
+}
 
 #[cfg_attr(test, derive(Clone, PartialEq, Debug))]
 pub enum Repository {
@@ -15,9 +26,17 @@ pub enum Repository {
     Raw { address: String },
 }
 
+#[cfg_attr(test, derive(Clone, PartialEq, Debug, Default))]
+pub struct Dependency {
+    pub name: String,
+    pub version: String,
+    pub latest_version: Option<String>,
+    pub repository: Repository,
+}
+
 impl Default for Repository {
     fn default() -> Self {
-        Unknown
+        Self::Unknown
     }
 }
 
@@ -32,6 +51,43 @@ impl Repository {
             }
             Repository::Raw { address } => Some(address.clone()),
             Repository::Unknown => None,
+        }
+    }
+
+    pub fn parse_url(repository: &str) -> Self {
+        lazy_static! {
+            static ref GITHUB_REGISTRY_REGEX: Regex =
+                Regex::new(".*?github.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)")
+                    .unwrap();
+            static ref GITLAB_REGISTRY_REGEX: Regex =
+                Regex::new(".*?gitlab.com[:/](?P<organization>.*?)/(?P<name>.*?)(?:$|\\.git|/)")
+                    .unwrap();
+        }
+
+        if repository.trim().is_empty() {
+            return Repository::Unknown;
+        }
+
+        if GITHUB_REGISTRY_REGEX.is_match(repository) {
+            let captures = GITHUB_REGISTRY_REGEX.captures(repository).unwrap();
+
+            return Repository::GitHub {
+                organization: captures["organization"].to_string(),
+                name: captures["name"].to_string(),
+            };
+        }
+
+        if GITLAB_REGISTRY_REGEX.is_match(repository) {
+            let captures = GITLAB_REGISTRY_REGEX.captures(repository).unwrap();
+
+            return Repository::GitLab {
+                organization: captures["organization"].to_string(),
+                name: captures["name"].to_string(),
+            };
+        }
+
+        Repository::Raw {
+            address: repository.to_string(),
         }
     }
 }

@@ -1,9 +1,9 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
-use std::sync;
 
 use anyhow::Context;
+use concurrent_lru::sharded::LruCache;
 use git2::Oid;
 use log::error;
 
@@ -16,7 +16,7 @@ struct RepositoryResult {
 }
 
 pub struct RepositoryRetriever {
-    cache: sync::Mutex<lru::LruCache<String, RepositoryResult>>,
+    cache: LruCache<String, RepositoryResult>,
 }
 
 impl CommitRetriever for RepositoryRetriever {
@@ -24,42 +24,31 @@ impl CommitRetriever for RepositoryRetriever {
         &self,
         repository_url: &str,
     ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
-        if let Some(repository) = self
-            .cache
-            .lock()
-            .map_err(|e| format!("Could not read cache: {}", e))?
-            .get(repository_url)
-        {
-            return Ok(repository.commits_for_each_tag.clone());
-        }
-
-        Ok(self
-            .save_repository_result(repository_url)?
-            .commits_for_each_tag)
+        self.cache
+            .get_or_try_init(repository_url.to_string(), 1, |url| {
+                Self::repository_result_from_url(url)
+            })
+            .map_err(|e: Box<dyn Error>| e)
+            .map(|handle| handle.value().commits_for_each_tag.clone())
     }
 
     fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
-        if let Some(repository) = self
-            .cache
-            .lock()
-            .map_err(|e| format!("Could not read cache: {}", e))?
-            .get_mut(repository_url)
-        {
-            return Ok(repository.all_tags.clone());
-        }
-        Ok(self.save_repository_result(repository_url)?.all_tags)
+        self.cache
+            .get_or_try_init(repository_url.to_string(), 1, |url| {
+                Self::repository_result_from_url(url)
+            })
+            .map_err(|e: Box<dyn Error>| e)
+            .map(|handle| handle.value().all_tags.clone())
     }
 }
 
 impl RepositoryRetriever {
     pub fn new() -> Self {
-        let cache = lru::LruCache::new(1000);
-        let mutex = sync::Mutex::new(cache);
-        RepositoryRetriever { cache: mutex }
+        let cache = LruCache::new(1000);
+        RepositoryRetriever { cache }
     }
 
-    fn save_repository_result(
-        &self,
+    fn repository_result_from_url(
         repository_url: &str,
     ) -> Result<RepositoryResult, Box<dyn Error>> {
         let repository = Repository::new(repository_url)
@@ -67,15 +56,10 @@ impl RepositoryRetriever {
         let commits_for_each_tag = repository.commits_for_each_tag()?;
         let all_tags = repository.all_tags()?;
 
-        let result = RepositoryResult {
+        Ok(RepositoryResult {
             commits_for_each_tag,
             all_tags,
-        };
-        self.cache
-            .lock()
-            .map_err(|e| format!("Could not write cache: {}", e))?
-            .put(repository_url.to_string(), result.clone());
-        Ok(result)
+        })
     }
 }
 
@@ -88,7 +72,9 @@ pub struct Repository {
 impl Repository {
     pub fn new(url: &str) -> Result<Self, Box<dyn Error>> {
         let temp_dir = tempfile::tempdir()?;
-        let repository = git2::Repository::clone(url, temp_dir.path())?;
+        let repository = git2::build::RepoBuilder::new()
+            .bare(true)
+            .clone(url, temp_dir.path())?;
 
         Ok(Repository {
             repository,
@@ -136,10 +122,10 @@ impl Repository {
         let mut revwalk = self
             .repository
             .revwalk()
-            .with_context(|| "unable to create a revwalk for repository")?;
+            .context("unable to create a revwalk for repository")?;
         revwalk
             .push_head()
-            .with_context(|| "unable to push head to revwalk".to_string())?;
+            .context("unable to push head to revwalk")?;
 
         let commits = revwalk
             .into_iter()
@@ -175,12 +161,8 @@ impl Repository {
 
         let mut commit_buffer = Vec::new();
         for i in 0..tags.len() - 1 {
-            let first_tag = tags
-                .get(i)
-                .with_context(|| "unable to retrieve first tag")?;
-            let second_tag = tags
-                .get(i + 1)
-                .with_context(|| "unable to retrieve second tag")?;
+            let first_tag = tags.get(i).context("unable to retrieve first tag")?;
+            let second_tag = tags.get(i + 1).context("unable to retrieve second tag")?;
             let first_oid = Oid::from_str(&first_tag.commit_id)?;
             let second_oid = Oid::from_str(&second_tag.commit_id)?;
 
@@ -209,12 +191,12 @@ impl Repository {
         let author_email = commit
             .author()
             .email()
-            .with_context(|| "unable to retrieve author email".to_string())?
+            .context("unable to retrieve author email")?
             .to_string();
         let author_name = commit
             .author()
             .name()
-            .with_context(|| "unable to retrieve author name".to_string())?
+            .context("unable to retrieve author name")?
             .to_string();
 
         Ok(Commit {

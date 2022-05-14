@@ -11,48 +11,82 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use log::LevelFilter;
+use anyhow::Context;
+use log::{error, info, LevelFilter};
 use rayon::prelude::*;
 
 use crate::cmd::parse_args;
 use crate::http::Client;
 use crate::infra::git::RepositoryRetriever;
 use crate::infra::http;
-use crate::infra::npm::DependencyInfoRetriever;
+use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
+use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
 use crate::pkg::config::Config;
-use crate::pkg::npm::{Dependency, DependencyReader};
+use crate::pkg::package_manager::{cargo, npm};
 use crate::pkg::policy::{ContributorsRatio, Evaluation, MinNumberOfReleasesRequired, Policy};
+use crate::pkg::recognizer::PackageManager;
+use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever};
+
+fn info_retriever_from_package_manager(
+    package_manager: PackageManager,
+) -> Result<Box<dyn InfoRetriever + Sync + Send>, Box<dyn std::error::Error>> {
+    let http_client = create_http_client()?;
+    match package_manager {
+        PackageManager::Npm => Ok(Box::new(NpmInfoRetriever::new(http_client))),
+        PackageManager::Cargo => Ok(Box::new(CargoInfoRetriever::new(http_client))),
+    }
+}
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
     load_logger()?;
     let config = load_config_from_file();
 
-    let http_client = create_http_client()?;
-    let retriever = Box::new(DependencyInfoRetriever::new(http_client));
-    let reader = DependencyReader::new(retriever);
+    let package_manager = PackageManager::from_filename(&args.lock_file).with_context(|| {
+        format!(
+            "unable to determine package manager for file: {}",
+            &args.lock_file
+        )
+    })?;
 
     let file = File::open(&args.lock_file)
         .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
 
+    let reader = dependency_reader_from_package_manager(package_manager, file)?;
+
     let policies = policies_from_config(&config);
 
-    reader.retrieve_from_reader(file).map(|x| {
-        x.into_par_iter().for_each(|dep| {
-            println!(
-                "{}: {} (latest: {}) - {} - {}",
-                dep.name,
-                dep.version,
-                dep.latest_version
-                    .as_ref()
-                    .unwrap_or(&"unknown".to_string()),
-                dep.repository,
-                check_if_dependency_is_okay(&policies, &dep)
-            );
+    let dependencies = reader.dependencies()?;
+    dependencies.into_par_iter().for_each(|dep| {
+            let evaluation = check_if_dependency_is_okay(&policies, &dep);
+            match evaluation {
+                Evaluation::Pass => {
+                    info!(
+                        "dependency [name={}, version={}, latest version={}, repository={}] is okay",
+                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository
+                    );
+                }
+                Evaluation::Fail(reason) => {
+                    error!(
+                        "dependency [name={}, version={}, latest version={}, repository={}] is not okay: {}",
+                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, reason
+                    );
+                }
+            }
         });
-    })?;
 
     Ok(())
+}
+
+fn dependency_reader_from_package_manager(
+    package_manager: PackageManager,
+    reader: impl std::io::Read + Send + 'static,
+) -> Result<Box<dyn DependencyRetriever + Send>, Box<dyn std::error::Error>> {
+    let retriever = info_retriever_from_package_manager(package_manager)?;
+    match package_manager {
+        PackageManager::Npm => Ok(Box::new(npm::DependencyReader::new(reader, retriever))),
+        PackageManager::Cargo => Ok(Box::new(cargo::DependencyReader::new(reader, retriever))),
+    }
 }
 
 fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy + Send + Sync>> {
@@ -89,21 +123,21 @@ fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy + Send + Sync>> {
 fn check_if_dependency_is_okay(
     policies: &[Box<dyn Policy + Send + Sync>],
     dep: &Dependency,
-) -> String {
+) -> Evaluation {
     for policy in policies.iter() {
         match policy.evaluate(dep) {
             Ok(result) => match result {
                 Evaluation::Pass => continue,
                 Evaluation::Fail(reason) => {
-                    return format!("Fail due to: {}", reason);
+                    return Evaluation::Fail(reason);
                 }
             },
             Err(error) => {
-                return format!("Error: {}", error);
+                return Evaluation::Fail(error.to_string());
             }
         }
     }
-    "PASS".to_owned()
+    Evaluation::Pass
 }
 
 fn load_logger() -> Result<(), Box<dyn std::error::Error>> {
@@ -120,7 +154,7 @@ fn create_http_client() -> Result<Client, Box<dyn std::error::Error>> {
         .timeout(Duration::from_secs(600))
         .build()?;
 
-    Ok(http::Client::new(reqwest_client))
+    Ok(Client::new(reqwest_client))
 }
 
 fn load_config_from_file() -> Config {

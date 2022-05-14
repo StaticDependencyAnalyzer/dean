@@ -9,16 +9,16 @@ repos:
 
   - repo: local
     hooks:
-      - id: rust-fmt
-        name: Rust Format
-        pass_filenames: false
-        language: system
-        entry: make fmt
       - id: rust-fix
         name: Rust Fix
         pass_filenames: false
         language: system
         entry: make fix
+      - id: rust-fmt
+        name: Rust Format
+        pass_filenames: false
+        language: system
+        entry: make fmt
       - id: rust-lint
         name: Rust Lint
         pass_filenames: false
