@@ -3,15 +3,14 @@ use serde_json::Value;
 
 use crate::infra::http;
 use crate::pkg::Repository;
-use crate::InfoRetriever;
 
-pub struct DependencyInfoRetriever {
+pub struct InfoRetriever {
     client: http::Client,
     github_registry_regex: Regex,
     gitlab_registry_regex: Regex,
 }
 
-impl DependencyInfoRetriever {
+impl InfoRetriever {
     pub fn new(client: http::Client) -> Self {
         Self {
             client,
@@ -27,13 +26,13 @@ impl DependencyInfoRetriever {
     }
 }
 
-impl Default for DependencyInfoRetriever {
+impl Default for InfoRetriever {
     fn default() -> Self {
-        DependencyInfoRetriever::new(http::Client::default())
+        InfoRetriever::new(http::Client::default())
     }
 }
 
-impl InfoRetriever for DependencyInfoRetriever {
+impl crate::InfoRetriever for InfoRetriever {
     fn latest_version(&self, package_name: &str) -> Result<String, String> {
         let response: Value = self
             .client
@@ -92,13 +91,13 @@ mod tests {
     use expects::matcher::{be_ok, equal};
     use expects::Subject;
 
-    use super::DependencyInfoRetriever;
+    use super::InfoRetriever;
     use crate::pkg::Repository;
-    use crate::InfoRetriever;
+    use crate::InfoRetriever as _;
 
     #[test]
     fn retrieves_the_latest_version_of_colors() {
-        let retriever = DependencyInfoRetriever::default();
+        let retriever = InfoRetriever::default();
 
         let result = retriever.latest_version("colors");
 
@@ -107,7 +106,7 @@ mod tests {
 
     #[test]
     fn retrieves_the_repository_of_colors() {
-        let retriever = DependencyInfoRetriever::default();
+        let retriever = InfoRetriever::default();
 
         let result = retriever.repository("colors");
 
@@ -119,7 +118,7 @@ mod tests {
 
     #[test]
     fn retrieves_the_repository_of_babel() {
-        let retriever = DependencyInfoRetriever::default();
+        let retriever = InfoRetriever::default();
 
         let result = retriever.repository("babel");
 
@@ -131,7 +130,7 @@ mod tests {
 
     #[test]
     fn retrieves_the_gitlab_repository_of_bfj() {
-        let retriever = DependencyInfoRetriever::default();
+        let retriever = InfoRetriever::default();
 
         let result = retriever.repository("bfj");
 
@@ -143,7 +142,7 @@ mod tests {
 
     #[test]
     fn retrieves_the_raw_repository_of_atob() {
-        let retriever = DependencyInfoRetriever::default();
+        let retriever = InfoRetriever::default();
 
         let result = retriever.repository("atob");
 
@@ -154,7 +153,7 @@ mod tests {
 
     #[test]
     fn retrieves_unknown_repository_of_json5() {
-        let retriever = DependencyInfoRetriever::default();
+        let retriever = InfoRetriever::default();
 
         let result = retriever.repository("@types/json5");
 

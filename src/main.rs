@@ -19,7 +19,7 @@ use crate::cmd::parse_args;
 use crate::http::Client;
 use crate::infra::git::RepositoryRetriever;
 use crate::infra::http;
-use crate::infra::npm::DependencyInfoRetriever;
+use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
 use crate::pkg::config::Config;
 use crate::pkg::policy::{ContributorsRatio, Evaluation, MinNumberOfReleasesRequired, Policy};
 use crate::pkg::recognizer::{package_manager_from_filename, PackageManager};
@@ -30,7 +30,7 @@ fn info_retriever_from_package_manager(
 ) -> Result<Box<dyn InfoRetriever + Sync + Send>, Box<dyn std::error::Error>> {
     let http_client = create_http_client()?;
     match package_manager {
-        PackageManager::Npm => Ok(Box::new(DependencyInfoRetriever::new(http_client))),
+        PackageManager::Npm => Ok(Box::new(NpmInfoRetriever::new(http_client))),
         PackageManager::Cargo => Err("Cargo is not supported yet".into()),
     }
 }
