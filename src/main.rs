@@ -46,12 +46,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &args.lock_file
         )
     })?;
-    let retriever = info_retriever_from_package_manager(package_manager)?;
 
     let file = File::open(&args.lock_file)
         .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
 
-    let reader = npm::DependencyReader::new(file, retriever);
+    let reader = dependency_reader_from_package_manager(package_manager, file)?;
 
     let policies = policies_from_config(&config);
 
@@ -75,6 +74,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
 
     Ok(())
+}
+
+fn dependency_reader_from_package_manager(
+    package_manager: PackageManager,
+    reader: impl std::io::Read + Send + 'static,
+) -> Result<Box<dyn DependencyRetriever + Send>, Box<dyn std::error::Error>> {
+    let retriever = info_retriever_from_package_manager(package_manager)?;
+    match package_manager {
+        PackageManager::Npm => Ok(Box::new(npm::DependencyReader::new(reader, retriever))),
+        PackageManager::Cargo => Err("Cargo is not supported yet".into()),
+    }
 }
 
 fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy + Send + Sync>> {
