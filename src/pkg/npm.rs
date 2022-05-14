@@ -3,7 +3,6 @@ use std::sync::{Arc, Mutex};
 use log::info;
 use rayon::prelude::*;
 use serde_json::Value;
-use serde_json::Value::Object;
 
 use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
@@ -22,36 +21,39 @@ where
     fn dependencies(&self) -> Result<Vec<Dependency>, String> {
         let result: Value = serde_json::from_reader(&mut *self.reader.lock().unwrap())
             .map_err(|e| e.to_string())?;
-        if let Object(dependencies) = &result["dependencies"] {
-            let deps: Vec<_> = dependencies
-                .into_iter()
-                .map(|(name, value)| (name, value["version"].as_str().map(ToString::to_string)))
-                .collect();
 
-            let npm_info_retriever = self.npm_info_retriever.clone();
-            deps.into_par_iter()
-                .map(|(name, version)| {
-                    let retriever = npm_info_retriever.clone();
-                    if let Some(version) = version {
-                        info!(
-                            target: "npm-dependency-retriever",
-                            "retrieving information for dependency [name={}, version={}]",
-                            name, &version
-                        );
-                        Ok(Dependency {
-                            name: name.into(),
-                            version,
-                            latest_version: retriever.latest_version(name).ok(),
-                            repository: retriever.repository(name).unwrap_or(Repository::Unknown),
-                        })
-                    } else {
-                        Err("version not found in map".to_string())
-                    }
-                })
-                .collect()
-        } else {
-            Err("dependencies not found in lock file".into())
+        let value = &result["dependencies"];
+        if !value.is_object() {
+            return Err("dependencies not found in lock file".into());
         }
+
+        let dependencies = value.as_object().unwrap();
+
+        let deps = dependencies
+            .into_iter()
+            .map(|(name, value)| (name, value["version"].as_str().map(ToString::to_string)));
+
+        let npm_info_retriever = self.npm_info_retriever.clone();
+        deps.par_bridge()
+            .map(|(name, version)| {
+                let retriever = npm_info_retriever.clone();
+                if let Some(version) = version {
+                    info!(
+                        target: "npm-dependency-retriever",
+                        "retrieving information for dependency [name={}, version={}]",
+                        name, &version
+                    );
+                    Ok(Dependency {
+                        name: name.into(),
+                        version,
+                        latest_version: retriever.latest_version(name).ok(),
+                        repository: retriever.repository(name).unwrap_or(Repository::Unknown),
+                    })
+                } else {
+                    Err("version not found in map".to_string())
+                }
+            })
+            .collect()
     }
 }
 

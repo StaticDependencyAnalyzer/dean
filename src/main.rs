@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Context;
-use log::LevelFilter;
+use log::{error, info, LevelFilter};
 use rayon::prelude::*;
 
 use crate::cmd::parse_args;
@@ -55,20 +55,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let policies = policies_from_config(&config);
 
-    reader.dependencies().map(|x| {
-        x.into_par_iter().for_each(|dep| {
-            println!(
-                "{}: {} (latest: {}) - {} - {}",
-                dep.name,
-                dep.version,
-                dep.latest_version
-                    .as_ref()
-                    .unwrap_or(&"unknown".to_string()),
-                dep.repository,
-                check_if_dependency_is_okay(&policies, &dep)
-            );
+    let dependencies = reader.dependencies()?;
+    dependencies.into_par_iter().for_each(|dep| {
+            let evaluation = check_if_dependency_is_okay(&policies, &dep);
+            match evaluation {
+                Evaluation::Pass => {
+                    info!(
+                        "dependency [name={}, version={}, latest version={}, repository={}] is okay",
+                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository
+                    );
+                }
+                Evaluation::Fail(reason) => {
+                    error!(
+                        "dependency [name={}, version={}, latest version={}, repository={}] is not okay: {}",
+                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, reason
+                    );
+                }
+            }
         });
-    })?;
 
     Ok(())
 }
@@ -107,21 +111,21 @@ fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy + Send + Sync>> {
 fn check_if_dependency_is_okay(
     policies: &[Box<dyn Policy + Send + Sync>],
     dep: &Dependency,
-) -> String {
+) -> Evaluation {
     for policy in policies.iter() {
         match policy.evaluate(dep) {
             Ok(result) => match result {
                 Evaluation::Pass => continue,
                 Evaluation::Fail(reason) => {
-                    return format!("Fail due to: {}", reason);
+                    return Evaluation::Fail(reason);
                 }
             },
             Err(error) => {
-                return format!("Error: {}", error);
+                return Evaluation::Fail(error.to_string());
             }
         }
     }
-    "PASS".to_owned()
+    Evaluation::Pass
 }
 
 fn load_logger() -> Result<(), Box<dyn std::error::Error>> {
