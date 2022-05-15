@@ -7,6 +7,7 @@ mod factory;
 mod infra;
 mod pkg;
 
+use std::error::Error;
 use std::fs::File;
 use std::rc::Rc;
 
@@ -14,7 +15,7 @@ use anyhow::Context;
 use log::{error, info, LevelFilter};
 use rayon::prelude::*;
 
-use crate::cmd::parse_args;
+use crate::cmd::{parse_args, Commands};
 use crate::factory::Factory;
 use crate::pkg::config::Config;
 use crate::pkg::policy::{Evaluation, Policy};
@@ -27,14 +28,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::load_from_default_file_path_or_default();
     let factory = Factory::new(config, args.clone());
 
-    let lock_file = File::open(&args.lock_file)
-        .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
-    let dependency_reader = factory.dependency_reader(lock_file);
+    match &args.command {
+        Commands::Scan { lock_file } => {
+            scan_lock_file(&factory, lock_file)?;
+        }
+    }
 
-    let _package_manager = PackageManager::from_filename(&args.lock_file).with_context(|| {
+    Ok(())
+}
+
+fn scan_lock_file(factory: &Factory, lock_file_name: &str) -> Result<(), Box<dyn Error>> {
+    let lock_file = File::open(lock_file_name)
+        .map_err(|err| format!("file {} could not be opened: {}", lock_file_name, err))?;
+    let dependency_reader = Factory::dependency_reader(lock_file, lock_file_name);
+
+    let _package_manager = PackageManager::from_filename(lock_file_name).with_context(|| {
         format!(
             "unable to determine package manager for file: {}",
-            &args.lock_file
+            lock_file_name
         )
     })?;
 
@@ -42,22 +53,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let dependencies = dependency_reader.dependencies()?;
     dependencies.into_par_iter().for_each(|dep| {
-            let evaluation = check_if_dependency_is_okay(&policies, &dep);
-            match evaluation {
-                Evaluation::Pass => {
-                    info!(
+        let evaluation = check_if_dependency_is_okay(&policies, &dep);
+        match evaluation {
+            Evaluation::Pass => {
+                info!(
                         "dependency [name={}, version={}, latest version={}, repository={}] is okay",
                         dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository
                     );
-                }
-                Evaluation::Fail(reason) => {
-                    error!(
+            }
+            Evaluation::Fail(reason) => {
+                error!(
                         "dependency [name={}, version={}, latest version={}, repository={}] is not okay: {}",
                         dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, reason
                     );
-                }
             }
-        });
+        }
+    });
 
     Ok(())
 }

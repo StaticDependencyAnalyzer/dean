@@ -21,24 +21,23 @@ pub struct Factory {
 
 impl Factory {
     pub fn dependency_reader<'a, T: std::io::Read + Send + 'a>(
-        &self,
         reader: T,
+        lock_file: &str,
     ) -> Box<dyn DependencyRetriever + Send + 'a> {
-        let retriever = self
-            .info_retriever()
-            .expect("unable to create the info retriever");
+        let retriever =
+            Self::info_retriever(lock_file).expect("unable to create the info retriever");
 
-        match self.package_manager() {
+        match Self::package_manager(lock_file) {
             PackageManager::Npm => Box::new(npm::DependencyReader::new(reader, retriever)),
             PackageManager::Cargo => Box::new(cargo::DependencyReader::new(reader, retriever)),
         }
     }
 
     fn info_retriever(
-        &self,
+        lock_file: &str,
     ) -> Result<Box<dyn InfoRetriever + Sync + Send>, Box<dyn std::error::Error>> {
         let http_client = Self::http_client()?;
-        match self.package_manager() {
+        match Self::package_manager(lock_file) {
             PackageManager::Npm => Ok(Box::new(NpmInfoRetriever::new(http_client))),
             PackageManager::Cargo => Ok(Box::new(CargoInfoRetriever::new(http_client))),
         }
@@ -52,11 +51,11 @@ impl Factory {
         Ok(http::Client::new(reqwest_client))
     }
 
-    fn package_manager(&self) -> PackageManager {
-        PackageManager::from_filename(&self.args.lock_file).unwrap_or_else(|| {
+    fn package_manager(lock_file: &str) -> PackageManager {
+        PackageManager::from_filename(lock_file).unwrap_or_else(|| {
             panic!(
                 "unable to determine package manager for file: {}",
-                &self.args.lock_file
+                lock_file
             )
         })
     }
