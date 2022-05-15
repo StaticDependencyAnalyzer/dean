@@ -1,5 +1,3 @@
-use std::error::Error;
-
 use serde::{Deserialize, Serialize};
 
 mod contributors_ratio;
@@ -21,14 +19,48 @@ pub struct Policies {
 }
 
 impl Config {
-    pub fn load_from_reader(reader: &mut dyn std::io::Read) -> Result<Self, Box<dyn Error>> {
+    pub fn load_from_reader(
+        reader: &mut dyn std::io::Read,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let result = serde_yaml::from_reader(reader)?;
         Ok(result)
     }
 
-    pub fn dump_to_string(&self) -> Result<String, Box<dyn Error>> {
+    pub fn dump_to_string(&self) -> Result<String, Box<dyn std::error::Error>> {
         let result = serde_yaml::to_string(&self)?;
         Ok(result)
+    }
+
+    fn default_config_file() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
+        let home = dirs_next::home_dir().ok_or_else(|| { "Could not find home directory. Please set the environment variable HOME to your home directory.".to_string() })?;
+        Ok(home.join(".config/dean.yaml"))
+    }
+
+    pub fn load_from_default_file_path_or_default() -> Self {
+        match Self::default_config_file() {
+            Ok(config_file) => match std::fs::File::open(&config_file) {
+                Ok(mut file) => match Config::load_from_reader(&mut file) {
+                    Ok(config) => {
+                        return config;
+                    }
+                    Err(err) => {
+                        log::warn!("could not load config from file: {}", err);
+                    }
+                },
+                Err(err) => {
+                    log::warn!(
+                        "could not open config file {}: {}",
+                        &config_file.display(),
+                        err
+                    );
+                }
+            },
+            Err(err) => {
+                log::warn!("could not determine default config file: {}", err);
+            }
+        }
+        log::info!("using default config");
+        Config::default()
     }
 }
 

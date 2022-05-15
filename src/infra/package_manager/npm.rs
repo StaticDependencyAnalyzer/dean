@@ -14,7 +14,7 @@ impl InfoRetriever {
     }
 }
 
-impl crate::InfoRetriever for InfoRetriever {
+impl crate::pkg::InfoRetriever for InfoRetriever {
     fn latest_version(&self, package_name: &str) -> Result<String, String> {
         let response: Value = self
             .client
@@ -54,8 +54,8 @@ mod tests {
     use expects::Subject;
 
     use super::InfoRetriever;
+    use crate::pkg::InfoRetriever as _;
     use crate::pkg::Repository;
-    use crate::InfoRetriever as _;
 
     #[test]
     fn retrieves_the_latest_version_of_colors() {

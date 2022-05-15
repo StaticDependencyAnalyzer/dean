@@ -3,60 +3,44 @@
 #![warn(unused)]
 
 mod cmd;
+mod factory;
 mod infra;
 mod pkg;
 
 use std::fs::File;
-use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
+use std::rc::Rc;
 
 use anyhow::Context;
 use log::{error, info, LevelFilter};
 use rayon::prelude::*;
 
 use crate::cmd::parse_args;
-use crate::http::Client;
-use crate::infra::git::RepositoryRetriever;
-use crate::infra::http;
-use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
-use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
+use crate::factory::Factory;
 use crate::pkg::config::Config;
-use crate::pkg::package_manager::{cargo, npm};
-use crate::pkg::policy::{ContributorsRatio, Evaluation, MinNumberOfReleasesRequired, Policy};
+use crate::pkg::policy::{Evaluation, Policy};
 use crate::pkg::recognizer::PackageManager;
-use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever};
-
-fn info_retriever_from_package_manager(
-    package_manager: PackageManager,
-) -> Result<Box<dyn InfoRetriever + Sync + Send>, Box<dyn std::error::Error>> {
-    let http_client = create_http_client()?;
-    match package_manager {
-        PackageManager::Npm => Ok(Box::new(NpmInfoRetriever::new(http_client))),
-        PackageManager::Cargo => Ok(Box::new(CargoInfoRetriever::new(http_client))),
-    }
-}
+use crate::pkg::Dependency;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = parse_args();
+    let args = Rc::new(parse_args());
     load_logger()?;
-    let config = load_config_from_file();
+    let config = Config::load_from_default_file_path_or_default();
+    let factory = Factory::new(config, args.clone());
 
-    let package_manager = PackageManager::from_filename(&args.lock_file).with_context(|| {
+    let lock_file = File::open(&args.lock_file)
+        .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
+    let dependency_reader = factory.dependency_reader(lock_file);
+
+    let _package_manager = PackageManager::from_filename(&args.lock_file).with_context(|| {
         format!(
             "unable to determine package manager for file: {}",
             &args.lock_file
         )
     })?;
 
-    let file = File::open(&args.lock_file)
-        .map_err(|err| format!("file {} could not be opened: {}", &args.lock_file, err))?;
+    let policies = factory.policies();
 
-    let reader = dependency_reader_from_package_manager(package_manager, file)?;
-
-    let policies = policies_from_config(&config);
-
-    let dependencies = reader.dependencies()?;
+    let dependencies = dependency_reader.dependencies()?;
     dependencies.into_par_iter().for_each(|dep| {
             let evaluation = check_if_dependency_is_okay(&policies, &dep);
             match evaluation {
@@ -76,48 +60,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
 
     Ok(())
-}
-
-fn dependency_reader_from_package_manager(
-    package_manager: PackageManager,
-    reader: impl std::io::Read + Send + 'static,
-) -> Result<Box<dyn DependencyRetriever + Send>, Box<dyn std::error::Error>> {
-    let retriever = info_retriever_from_package_manager(package_manager)?;
-    match package_manager {
-        PackageManager::Npm => Ok(Box::new(npm::DependencyReader::new(reader, retriever))),
-        PackageManager::Cargo => Ok(Box::new(cargo::DependencyReader::new(reader, retriever))),
-    }
-}
-
-fn policies_from_config(config: &Config) -> Vec<Box<dyn Policy + Send + Sync>> {
-    let mut policies: Vec<Box<dyn Policy + Send + Sync>> = vec![];
-    let retriever = Arc::new(RepositoryRetriever::new());
-
-    if config.policies.contributors_ratio.enabled {
-        policies.push(Box::new(ContributorsRatio::new(
-            retriever.clone(),
-            config
-                .policies
-                .contributors_ratio
-                .max_number_of_releases_to_check,
-            config.policies.contributors_ratio.max_contributor_ratio,
-        )));
-    }
-
-    if config.policies.min_number_of_releases_required.enabled {
-        let clock = Box::new(infra::clock::Clock::default());
-        policies.push(Box::new(MinNumberOfReleasesRequired::new(
-            retriever,
-            config
-                .policies
-                .min_number_of_releases_required
-                .min_number_of_releases,
-            Duration::from_secs(config.policies.min_number_of_releases_required.days * 86400),
-            clock,
-        )));
-    }
-
-    policies
 }
 
 fn check_if_dependency_is_okay(
@@ -147,48 +89,4 @@ fn load_logger() -> Result<(), Box<dyn std::error::Error>> {
         .env()
         .init()?;
     Ok(())
-}
-
-fn create_http_client() -> Result<Client, Box<dyn std::error::Error>> {
-    let reqwest_client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(600))
-        .build()?;
-
-    Ok(Client::new(reqwest_client))
-}
-
-fn load_config_from_file() -> Config {
-    match default_config_file() {
-        Ok(config_file) => match File::open(&config_file) {
-            Ok(mut file) => match Config::load_from_reader(&mut file) {
-                Ok(config) => {
-                    return config;
-                }
-                Err(err) => {
-                    log::warn!("could not load config from file: {}", err);
-                }
-            },
-            Err(err) => {
-                log::warn!(
-                    "could not open config file {}: {}",
-                    &config_file.display(),
-                    err
-                );
-            }
-        },
-        Err(err) => {
-            log::warn!("could not determine default config file: {}", err);
-        }
-    }
-    log::info!("using default config");
-    Config::default()
-}
-
-fn default_config_file() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let home = home_directory().ok_or_else(|| { "Could not find home directory. Please set the environment variable HOME to your home directory.".to_string() })?;
-    Ok(home.join(".config/dean.yaml"))
-}
-
-fn home_directory() -> Option<PathBuf> {
-    dirs_next::home_dir()
 }

@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::http;
+use crate::infra::http;
 use crate::pkg::Repository;
 
 #[derive(Default)]
@@ -30,7 +30,7 @@ impl InfoRetriever {
     }
 }
 
-impl crate::InfoRetriever for InfoRetriever {
+impl crate::pkg::InfoRetriever for InfoRetriever {
     fn latest_version(&self, dependency: &str) -> Result<String, String> {
         let response_object = self.make_request(dependency)?;
 
@@ -73,7 +73,7 @@ mod tests {
     use expects::Subject;
 
     use super::*;
-    use crate::InfoRetriever as _;
+    use crate::pkg::InfoRetriever as _;
 
     #[test]
     fn it_retrieves_the_latest_version_of_serde() {

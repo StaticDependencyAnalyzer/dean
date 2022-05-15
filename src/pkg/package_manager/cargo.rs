@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use toml::Value;
 
 use crate::pkg::Repository;
-use crate::{Dependency, DependencyRetriever, InfoRetriever};
+use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever};
 
 pub struct DependencyReader<T>
 where
