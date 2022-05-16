@@ -17,6 +17,19 @@ pub enum Commands {
         #[clap(long, short, default_value = "Cargo.lock")]
         lock_file: String,
     },
+
+    #[clap(about = "Manages the configuration of the tool.")]
+    #[clap(arg_required_else_help(true))]
+    Config {
+        #[clap(subcommand)]
+        command: ConfigCommands,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConfigCommands {
+    #[clap(about = "Displays the current configuration")]
+    Show,
 }
 
 pub fn parse_args() -> Args {

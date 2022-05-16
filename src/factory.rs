@@ -2,7 +2,6 @@ use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::cmd::Args;
 use crate::infra::clock::Clock;
 use crate::infra::git::RepositoryRetriever;
 use crate::infra::http;
@@ -15,8 +14,7 @@ use crate::pkg::recognizer::PackageManager;
 use crate::pkg::{DependencyRetriever, InfoRetriever};
 
 pub struct Factory {
-    config: Config,
-    args: Rc<Args>,
+    config: Rc<Config>,
 }
 
 impl Factory {
@@ -97,7 +95,7 @@ impl Factory {
 }
 
 impl Factory {
-    pub fn new(config: Config, args: Rc<Args>) -> Self {
-        Self { config, args }
+    pub fn new(config: Rc<Config>) -> Self {
+        Self { config }
     }
 }

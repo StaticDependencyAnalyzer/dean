@@ -15,7 +15,7 @@ use anyhow::Context;
 use log::{error, info, LevelFilter};
 use rayon::prelude::*;
 
-use crate::cmd::{parse_args, Commands};
+use crate::cmd::{parse_args, Commands, ConfigCommands};
 use crate::factory::Factory;
 use crate::pkg::config::Config;
 use crate::pkg::policy::{Evaluation, Policy};
@@ -23,15 +23,20 @@ use crate::pkg::recognizer::PackageManager;
 use crate::pkg::Dependency;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let args = Rc::new(parse_args());
+    let args = parse_args();
     load_logger()?;
-    let config = Config::load_from_default_file_path_or_default();
-    let factory = Factory::new(config, args.clone());
+    let config = Rc::new(Config::load_from_default_file_path_or_default());
+    let factory = Factory::new(config.clone());
 
     match &args.command {
         Commands::Scan { lock_file } => {
             scan_lock_file(&factory, lock_file)?;
         }
+        Commands::Config { command } => match command {
+            ConfigCommands::Show => {
+                println!("{}", config.dump_to_string()?);
+            }
+        },
     }
 
     Ok(())
