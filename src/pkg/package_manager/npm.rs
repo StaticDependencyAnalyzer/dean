@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use log::info;
-use rayon::prelude::*;
+use log::{error, info};
 use serde_json::Value;
 
 use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
@@ -18,42 +17,46 @@ impl<T> DependencyRetriever for DependencyReader<T>
 where
     T: std::io::Read,
 {
-    fn dependencies(&self) -> Result<Vec<Dependency>, String> {
+    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
+    fn dependencies(&self) -> Result<Box<dyn Iterator<Item = Dependency> + Send>, String> {
         let result: Value = serde_json::from_reader(&mut *self.reader.lock().unwrap())
             .map_err(|e| e.to_string())?;
 
-        let value = &result["dependencies"];
+        let value = result["dependencies"].clone();
         if !value.is_object() {
             return Err("dependencies not found in lock file".into());
         }
 
-        let dependencies = value.as_object().unwrap();
+        let dependencies = value.as_object().unwrap().clone();
 
         let deps = dependencies
             .into_iter()
-            .map(|(name, value)| (name, value["version"].as_str().map(ToString::to_string)));
+            .map(|(name, value)| (name, value["version"].as_str().map(ToString::to_string)))
+            .filter_map(|(name, version)| {
+                if let Some(version) = version {
+                    Some((name, version))
+                } else {
+                    error!("no version found for dependency {}", &name);
+                    None
+                }
+            });
 
         let npm_info_retriever = self.npm_info_retriever.clone();
-        deps.par_bridge()
-            .map(|(name, version)| {
-                let retriever = npm_info_retriever.clone();
-                if let Some(version) = version {
-                    info!(
-                        target: "npm-dependency-retriever",
-                        "retrieving information for dependency [name={}, version={}]",
-                        name, &version
-                    );
-                    Ok(Dependency {
-                        name: name.into(),
-                        version,
-                        latest_version: retriever.latest_version(name).ok(),
-                        repository: retriever.repository(name).unwrap_or(Repository::Unknown),
-                    })
-                } else {
-                    Err("version not found in map".to_string())
-                }
-            })
-            .collect()
+        let dependencies = deps.map(move |(name, version)| {
+            let retriever = npm_info_retriever.clone();
+            info!(
+                target: "npm-dependency-retriever",
+                "retrieving information for dependency [name={}, version={}]",
+                name, version
+            );
+            Dependency {
+                latest_version: retriever.latest_version(&name).ok(),
+                repository: retriever.repository(&name).unwrap_or(Repository::Unknown),
+                name,
+                version,
+            }
+        });
+        Ok(Box::new(dependencies))
     }
 }
 
@@ -71,10 +74,8 @@ where
 
 #[cfg(test)]
 mod tests {
-    use expects::{
-        matcher::{be_ok, consist_of},
-        Subject,
-    };
+    use expects::matcher::equal;
+    use expects::Subject;
     use mockall::predicate::eq;
 
     use super::*;
@@ -102,15 +103,19 @@ mod tests {
         let dependency_reader = DependencyReader::new(npm_package_lock(), retriever);
         let dependencies = dependency_reader.dependencies();
 
-        dependencies.should(be_ok(consist_of(&[Dependency {
-            name: "colors".into(),
-            version: "1.4.0".into(),
-            latest_version: Some("1.4.1".into()),
-            repository: Repository::GitHub {
-                organization: "org".into(),
-                name: "name".into(),
-            },
-        }])));
+        dependencies
+            .unwrap()
+            .next()
+            .unwrap()
+            .should(equal(Dependency {
+                name: "colors".into(),
+                version: "1.4.0".into(),
+                latest_version: Some("1.4.1".into()),
+                repository: Repository::GitHub {
+                    organization: "org".into(),
+                    name: "name".into(),
+                },
+            }));
     }
 
     fn npm_package_lock() -> &'static [u8] {

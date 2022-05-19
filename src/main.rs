@@ -12,7 +12,7 @@ use std::fs::File;
 use std::rc::Rc;
 
 use anyhow::Context;
-use log::{error, info, LevelFilter};
+use log::{info, warn, LevelFilter};
 use rayon::prelude::*;
 
 use crate::cmd::{parse_args, Commands, ConfigCommands};
@@ -56,8 +56,7 @@ fn scan_lock_file(factory: &Factory, lock_file_name: &str) -> Result<(), Box<dyn
 
     let policies = factory.policies();
 
-    let dependencies = dependency_reader.dependencies()?;
-    dependencies.into_par_iter().for_each(|dep| {
+    dependency_reader.par_bridge().for_each(|dep| {
         let evaluation = check_if_dependency_is_okay(&policies, &dep);
         match evaluation {
             Evaluation::Pass => {
@@ -67,7 +66,7 @@ fn scan_lock_file(factory: &Factory, lock_file_name: &str) -> Result<(), Box<dyn
                     );
             }
             Evaluation::Fail(reason) => {
-                error!(
+                warn!(
                         "dependency [name={}, version={}, latest version={}, repository={}] is not okay: {}",
                         dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, reason
                     );

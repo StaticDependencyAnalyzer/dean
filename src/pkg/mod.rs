@@ -15,7 +15,8 @@ pub trait InfoRetriever {
 }
 
 pub trait DependencyRetriever {
-    fn dependencies(&self) -> Result<Vec<Dependency>, String>;
+    type Itr: IntoIterator<Item = Dependency>;
+    fn dependencies(&self) -> Result<Self::Itr, String>;
 }
 
 #[cfg_attr(test, derive(Clone, PartialEq, Debug))]

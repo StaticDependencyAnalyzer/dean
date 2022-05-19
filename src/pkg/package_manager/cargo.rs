@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use log::info;
+use log::{error, info};
 use rayon::prelude::*;
 use toml::Value;
 
@@ -19,7 +19,8 @@ impl<T> DependencyRetriever for DependencyReader<T>
 where
     T: std::io::Read,
 {
-    fn dependencies(&self) -> Result<Vec<Dependency>, String> {
+    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
+    fn dependencies(&self) -> Result<Box<dyn Iterator<Item = Dependency> + Send>, String> {
         let mut contents = Vec::new();
         self.reader
             .lock()
@@ -30,44 +31,55 @@ where
 
         let packages = result
             .get("package")
-            .ok_or_else(|| "No package section found".to_string())?;
+            .ok_or_else(|| "No package section found".to_string())?
+            .clone();
 
         let package_list = packages
             .as_array()
-            .ok_or_else(|| "Packages section is not an array".to_string())?;
+            .ok_or_else(|| "Packages section is not an array".to_string())?
+            .clone();
 
-        let info_retriever = self.cargo_info_retriever.clone();
-
-        package_list
-            .into_par_iter()
+        let name_and_version_from_packages = package_list
+            .into_iter()
             .map(|package| {
                 let name = package
                     .get("name")
                     .ok_or_else(|| "no name found".to_string())?
                     .as_str()
-                    .ok_or_else(|| "name is not a string".to_string())?;
+                    .ok_or_else(|| "name is not a string".to_string())?
+                    .to_string();
 
                 let version = package
                     .get("version")
                     .ok_or_else(|| "no version found".to_string())?
                     .as_str()
-                    .ok_or_else(|| "version is not a string".to_string())?;
+                    .ok_or_else(|| "version is not a string".to_string())?
+                    .to_string();
 
-                info!(
-                    target: "cargo-dependency-retriever",
-                    "retrieving information for dependency [name={}, version={}]",
-                    name, &version
-                );
-
-                let retriever = info_retriever.clone();
-                Ok(Dependency {
-                    name: name.to_string(),
-                    version: version.to_string(),
-                    latest_version: retriever.latest_version(name).ok(),
-                    repository: retriever.repository(name).unwrap_or(Repository::Unknown),
-                })
+                Ok((name, version))
             })
-            .collect()
+            .into_iter()
+            .filter_map(|result: Result<(String, String), String>| {
+                result.map_err(|e| error!("{}", e)).ok()
+            });
+
+        let info_retriever = self.cargo_info_retriever.clone();
+        let dependencies = name_and_version_from_packages.map(move |(name, version)| {
+            info!(
+                target: "cargo-dependency-retriever",
+                "retrieving information for dependency [name={}, version={}]",
+                name, &version
+            );
+
+            let retriever = info_retriever.clone();
+            Dependency {
+                latest_version: retriever.latest_version(&name).ok(),
+                repository: retriever.repository(&name).unwrap_or(Repository::Unknown),
+                name,
+                version,
+            }
+        });
+        Ok(Box::new(dependencies))
     }
 }
 
@@ -113,10 +125,9 @@ mod tests {
             .times(1);
 
         let dependency_reader = DependencyReader::new(cargo_lock_file_contents(), retriever);
-        let dependencies = dependency_reader.dependencies().unwrap();
+        let mut dependencies = dependency_reader.dependencies().unwrap();
 
-        assert_eq!(dependencies.len(), 1);
-        dependencies.get(0).unwrap().should(equal(Dependency {
+        dependencies.next().unwrap().should(equal(Dependency {
             name: "serde".into(),
             version: "1.0.137".into(),
             latest_version: Some("1.0.138".into()),

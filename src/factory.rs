@@ -12,6 +12,7 @@ use crate::pkg::package_manager::{cargo, npm};
 use crate::pkg::policy::{ContributorsRatio, MinNumberOfReleasesRequired, Policy};
 use crate::pkg::recognizer::PackageManager;
 use crate::pkg::{DependencyRetriever, InfoRetriever};
+use crate::Dependency;
 
 pub struct Factory {
     config: Rc<Config>,
@@ -21,13 +22,21 @@ impl Factory {
     pub fn dependency_reader<'a, T: std::io::Read + Send + 'a>(
         reader: T,
         lock_file: &str,
-    ) -> Box<dyn DependencyRetriever + Send + 'a> {
+    ) -> Box<dyn Iterator<Item = Dependency> + Send + 'a> {
         let retriever =
             Self::info_retriever(lock_file).expect("unable to create the info retriever");
 
         match Self::package_manager(lock_file) {
-            PackageManager::Npm => Box::new(npm::DependencyReader::new(reader, retriever)),
-            PackageManager::Cargo => Box::new(cargo::DependencyReader::new(reader, retriever)),
+            PackageManager::Npm => Box::new(
+                npm::DependencyReader::new(reader, retriever)
+                    .dependencies()
+                    .unwrap(),
+            ),
+            PackageManager::Cargo => Box::new(
+                cargo::DependencyReader::new(reader, retriever)
+                    .dependencies()
+                    .unwrap(),
+            ),
         }
     }
 
