@@ -42,10 +42,20 @@ pub trait Clock {
     fn now_timestamp(&self) -> u64;
 }
 
-#[derive(Eq, PartialEq, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Evaluation {
-    Pass,
-    Fail(String),
+    Pass(Dependency),
+    Fail(Dependency, String),
+}
+
+impl PartialEq for Evaluation {
+    fn eq(&self, other: &Self) -> bool {
+        matches!(
+            (self, other),
+            (Evaluation::Pass(_), Evaluation::Pass(_))
+                | (Evaluation::Fail(_, _), Evaluation::Fail(_, _))
+        )
+    }
 }
 
 pub trait Policy {

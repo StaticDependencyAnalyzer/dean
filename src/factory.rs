@@ -1,3 +1,5 @@
+use std::cell::RefCell;
+use std::fs::File;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,6 +10,7 @@ use crate::infra::http;
 use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
 use crate::pkg::config::Config;
+use crate::pkg::csv::Reporter;
 use crate::pkg::package_manager::{cargo, npm};
 use crate::pkg::policy::{ContributorsRatio, MinNumberOfReleasesRequired, Policy};
 use crate::pkg::recognizer::PackageManager;
@@ -66,6 +69,7 @@ impl Factory {
             )
         })
     }
+
     pub fn policies(&self) -> Vec<Box<dyn Policy + Send + Sync>> {
         let mut policies: Vec<Box<dyn Policy + Send + Sync>> = vec![];
         let retriever = Arc::new(RepositoryRetriever::new());
@@ -100,6 +104,16 @@ impl Factory {
         }
 
         policies
+    }
+
+    pub fn result_reporter() -> Reporter<File> {
+        let reader = File::options()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open("result.csv")
+            .expect("unable to open result.csv");
+        Reporter::new(Rc::new(RefCell::new(reader)))
     }
 }
 

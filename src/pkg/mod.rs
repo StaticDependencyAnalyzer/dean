@@ -3,7 +3,10 @@ use std::fmt::{Display, Formatter};
 use lazy_static::lazy_static;
 use regex::Regex;
 
+use crate::Evaluation;
+
 pub mod config;
+pub mod csv;
 pub mod package_manager;
 pub mod policy;
 pub mod recognizer;
@@ -19,7 +22,13 @@ pub trait DependencyRetriever {
     fn dependencies(&self) -> Result<Self::Itr, String>;
 }
 
-#[cfg_attr(test, derive(Clone, PartialEq, Debug))]
+pub trait ResultReporter {
+    fn report_results<T>(&mut self, result: T) -> Result<(), String>
+    where
+        T: IntoIterator<Item = Evaluation>;
+}
+
+#[derive(Clone, PartialEq, Debug)]
 pub enum Repository {
     Unknown,
     GitHub { organization: String, name: String },
@@ -27,7 +36,7 @@ pub enum Repository {
     Raw { address: String },
 }
 
-#[cfg_attr(test, derive(Clone, PartialEq, Debug, Default))]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Dependency {
     pub name: String,
     pub version: String,
