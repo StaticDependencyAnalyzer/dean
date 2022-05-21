@@ -245,45 +245,6 @@ mod tests {
         evaluation.should(equal(Evaluation::Pass(dependency())));
     }
 
-    //
-    // #[test]
-    // fn it_builds_the_execution_configs_from_config() {
-    //     let config = Config {
-    //         default_policies: Policies {
-    //             contributors_ratio: None,
-    //             min_number_of_releases_required: None,
-    //         },
-    //         dependency_config: vec![DependencyConfiguration {
-    //             name: "foo".into(),
-    //             policies: Policies {
-    //                 contributors_ratio: Some(contributors_ratio::Config {
-    //                     max_number_of_releases_to_check: 0,
-    //                     max_contributor_ratio: 0.0,
-    //                 }),
-    //                 min_number_of_releases_required: Some(
-    //                     min_number_of_releases_required::Config {
-    //                         min_number_of_releases: 0,
-    //                         days: 0,
-    //                     },
-    //                 ),
-    //             },
-    //         }],
-    //     };
-    //
-    //     let execution_configs = execution_configs_from_config(&config);
-    //
-    //     execution_configs.len().should(equal(1_usize));
-    //     execution_configs[0].policies.len().should(equal(2_usize));
-    //     execution_configs[0]
-    //         .regex
-    //         .as_ref()
-    //         .unwrap()
-    //         .as_str()
-    //         .should(equal("foo"));
-    //     execution_configs[1].policies.len().should(equal(1_usize));
-    //     execution_configs[1].regex.should(be_none());
-    // }
-
     fn dependency() -> Dependency {
         Dependency {
             name: "foo".to_string(),
