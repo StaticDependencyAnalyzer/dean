@@ -48,14 +48,17 @@ impl Policy for MinNumberOfReleasesRequired {
 }
 
 impl MinNumberOfReleasesRequired {
-    pub fn new(
-        retriever: Arc<dyn CommitRetriever + Sync + Send>,
+    pub fn new<R>(
+        retriever: R,
         number_of_releases: usize,
         duration: Duration,
         clock: Box<dyn Clock + Sync + Send>,
-    ) -> Self {
+    ) -> Self
+    where
+        R: Into<Arc<dyn CommitRetriever + Sync + Send>>,
+    {
         Self {
-            retriever,
+            retriever: retriever.into(),
             number_of_releases,
             duration,
             clock,
@@ -79,30 +82,32 @@ mod tests {
 
     #[test]
     fn when_there_are_more_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
-        let mut retriever = Arc::new(MockCommitRetriever::new());
-        Arc::get_mut(&mut retriever)
-            .unwrap()
-            .expect_all_tags()
-            .with(eq("https://github.com/some_org/some_repo"))
-            .returning(|_| {
-                Ok(vec![
-                    Tag {
-                        name: "v0.1.2".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_640_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.3".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_641_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.4".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_642_477_360,
-                    },
-                ])
-            });
+        let retriever = {
+            let mut retriever = MockCommitRetriever::new();
+            retriever
+                .expect_all_tags()
+                .with(eq("https://github.com/some_org/some_repo"))
+                .returning(|_| {
+                    Ok(vec![
+                        Tag {
+                            name: "v0.1.2".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_640_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.3".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_641_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.4".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_642_477_360,
+                        },
+                    ])
+                });
+            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+        };
         let mut clock = Box::new(MockClock::new());
         clock.expect_now_timestamp().return_const(1_648_583_009_u64);
 
@@ -129,18 +134,20 @@ mod tests {
 
     #[test]
     fn when_there_are_less_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
-        let mut retriever = Arc::new(MockCommitRetriever::new());
-        Arc::get_mut(&mut retriever)
-            .unwrap()
-            .expect_all_tags()
-            .with(eq("https://github.com/some_org/some_repo"))
-            .returning(|_| {
-                Ok(vec![Tag {
-                    name: "v0.1.2".to_string(),
-                    commit_id: "234234231".to_string(),
-                    commit_timestamp: 1_640_477_360,
-                }])
-            });
+        let retriever = {
+            let mut retriever = MockCommitRetriever::new();
+            retriever
+                .expect_all_tags()
+                .with(eq("https://github.com/some_org/some_repo"))
+                .returning(|_| {
+                    Ok(vec![Tag {
+                        name: "v0.1.2".to_string(),
+                        commit_id: "234234231".to_string(),
+                        commit_timestamp: 1_640_477_360,
+                    }])
+                });
+            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+        };
         let mut clock = Box::new(MockClock::new());
         clock.expect_now_timestamp().return_const(1_648_583_009_u64);
 
@@ -169,30 +176,32 @@ mod tests {
 
     #[test]
     fn when_the_releases_are_too_old_it_should_pass_the_policy_evaluation() {
-        let mut retriever = Arc::new(MockCommitRetriever::new());
-        Arc::get_mut(&mut retriever)
-            .unwrap()
-            .expect_all_tags()
-            .with(eq("https://github.com/some_org/some_repo"))
-            .returning(|_| {
-                Ok(vec![
-                    Tag {
-                        name: "v0.1.2".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_440_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.3".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_441_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.4".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_442_477_360,
-                    },
-                ])
-            });
+        let retriever = {
+            let mut retriever = MockCommitRetriever::new();
+            retriever
+                .expect_all_tags()
+                .with(eq("https://github.com/some_org/some_repo"))
+                .returning(|_| {
+                    Ok(vec![
+                        Tag {
+                            name: "v0.1.2".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_440_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.3".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_441_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.4".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_442_477_360,
+                        },
+                    ])
+                });
+            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+        };
         let mut clock = Box::new(MockClock::new());
         clock.expect_now_timestamp().return_const(1_648_583_009_u64);
 

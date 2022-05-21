@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 
 use log::{error, info};
-use rayon::prelude::*;
 use toml::Value;
 
 use crate::pkg::Repository;
@@ -87,7 +86,10 @@ impl<T> DependencyReader<T>
 where
     T: std::io::Read,
 {
-    pub fn new(reader: T, retriever: Box<dyn InfoRetriever + Send + Sync>) -> Self {
+    pub fn new<R>(reader: T, retriever: R) -> Self
+    where
+        R: Into<Arc<dyn InfoRetriever + Send + Sync>>,
+    {
         Self {
             reader: reader.into(),
             cargo_info_retriever: retriever.into(),
@@ -107,22 +109,25 @@ mod tests {
 
     #[test]
     fn retrieves_all_dependencies_from_cargo() {
-        let mut retriever = Box::new(MockInfoRetriever::new());
-        retriever
-            .expect_latest_version()
-            .with(eq("serde"))
-            .return_once(|_| Ok("1.0.138".into()))
-            .times(1);
-        retriever
-            .expect_repository()
-            .with(eq("serde"))
-            .return_once(|_| {
-                Ok(Repository::GitHub {
-                    organization: "serde-rs".into(),
-                    name: "serde".into(),
+        let retriever = {
+            let mut retriever = Box::new(MockInfoRetriever::new());
+            retriever
+                .expect_latest_version()
+                .with(eq("serde"))
+                .return_once(|_| Ok("1.0.138".into()))
+                .times(1);
+            retriever
+                .expect_repository()
+                .with(eq("serde"))
+                .return_once(|_| {
+                    Ok(Repository::GitHub {
+                        organization: "serde-rs".into(),
+                        name: "serde".into(),
+                    })
                 })
-            })
-            .times(1);
+                .times(1);
+            retriever as Box<dyn InfoRetriever + Send + Sync>
+        };
 
         let dependency_reader = DependencyReader::new(cargo_lock_file_contents(), retriever);
         let mut dependencies = dependency_reader.dependencies().unwrap();
