@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 pub struct Config {
     pub min_number_of_releases: usize,
     pub days: u64,
-    pub skip: Vec<String>,
-    pub enabled: bool,
 }
 
 impl Default for Config {
@@ -14,8 +12,6 @@ impl Default for Config {
         Self {
             min_number_of_releases: 3,
             days: 365,
-            skip: vec![],
-            enabled: true,
         }
     }
 }

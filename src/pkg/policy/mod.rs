@@ -58,7 +58,8 @@ impl PartialEq for Evaluation {
     }
 }
 
-pub trait Policy {
+#[cfg_attr(test, mockall::automock)]
+pub trait Policy: Send + Sync {
     /// Evaluates the policy.
     fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>>;
 }

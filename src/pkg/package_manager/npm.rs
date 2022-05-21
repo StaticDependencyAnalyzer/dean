@@ -64,7 +64,10 @@ impl<T> DependencyReader<T>
 where
     T: std::io::Read,
 {
-    pub fn new(reader: T, retriever: Box<dyn InfoRetriever + Send + Sync>) -> Self {
+    pub fn new<R>(reader: T, retriever: R) -> Self
+    where
+        R: Into<Arc<dyn InfoRetriever + Send + Sync>>,
+    {
         Self {
             reader: reader.into(),
             npm_info_retriever: retriever.into(),
@@ -83,22 +86,25 @@ mod tests {
 
     #[test]
     fn retrieves_all_dependencies() {
-        let mut retriever = Box::new(MockInfoRetriever::new());
-        retriever
-            .expect_latest_version()
-            .with(eq("colors"))
-            .return_once(|_| Ok("1.4.1".into()))
-            .times(1);
-        retriever
-            .expect_repository()
-            .with(eq("colors"))
-            .return_once(|_| {
-                Ok(Repository::GitHub {
-                    organization: "org".into(),
-                    name: "name".into(),
+        let retriever = {
+            let mut retriever = Box::new(MockInfoRetriever::new());
+            retriever
+                .expect_latest_version()
+                .with(eq("colors"))
+                .return_once(|_| Ok("1.4.1".into()))
+                .times(1);
+            retriever
+                .expect_repository()
+                .with(eq("colors"))
+                .return_once(|_| {
+                    Ok(Repository::GitHub {
+                        organization: "org".into(),
+                        name: "name".into(),
+                    })
                 })
-            })
-            .times(1);
+                .times(1);
+            retriever as Box<dyn InfoRetriever + Send + Sync>
+        };
 
         let dependency_reader = DependencyReader::new(npm_package_lock(), retriever);
         let dependencies = dependency_reader.dependencies();

@@ -1,12 +1,37 @@
 use serde::{Deserialize, Serialize};
 
-mod contributors_ratio;
-mod min_number_of_releases_required;
+pub mod contributors_ratio;
+pub mod min_number_of_releases_required;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[cfg_attr(test, derive(PartialEq))]
+#[serde(default)]
+pub struct Config {
+    #[serde(default)]
+    pub default_policies: Policies,
+    #[serde(default)]
+    pub dependency_config: Vec<DependencyConfiguration>,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            default_policies: Policies {
+                min_number_of_releases_required: Some(
+                    min_number_of_releases_required::Config::default(),
+                ),
+                contributors_ratio: Some(contributors_ratio::Config::default()),
+            },
+            dependency_config: vec![],
+        }
+    }
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(default)]
-pub struct Config {
+pub struct DependencyConfiguration {
+    pub name: String,
     pub policies: Policies,
 }
 
@@ -14,8 +39,8 @@ pub struct Config {
 #[cfg_attr(test, derive(PartialEq))]
 #[serde(default)]
 pub struct Policies {
-    pub contributors_ratio: contributors_ratio::Config,
-    pub min_number_of_releases_required: min_number_of_releases_required::Config,
+    pub contributors_ratio: Option<contributors_ratio::Config>,
+    pub min_number_of_releases_required: Option<min_number_of_releases_required::Config>,
 }
 
 impl Config {
@@ -75,20 +100,17 @@ mod tests {
     fn it_loads_the_default_config_from_an_empty_file() {
         let config: Config = Config::load_from_reader(&mut "".as_bytes()).unwrap_or_default();
         config.should(equal(Config {
-            policies: Policies {
-                contributors_ratio: contributors_ratio::Config {
+            default_policies: Policies {
+                contributors_ratio: Some(contributors_ratio::Config {
                     max_number_of_releases_to_check: 3_usize,
                     max_contributor_ratio: 0.5,
-                    skip: vec![],
-                    enabled: true,
-                },
-                min_number_of_releases_required: min_number_of_releases_required::Config {
+                }),
+                min_number_of_releases_required: Some(min_number_of_releases_required::Config {
                     min_number_of_releases: 3_usize,
                     days: 365_u64,
-                    skip: vec![],
-                    enabled: true,
-                },
+                }),
             },
+            dependency_config: vec![],
         }));
     }
 
@@ -96,20 +118,17 @@ mod tests {
     fn it_loads_the_config_from_reader() {
         let config: Config = Config::load_from_reader(&mut config_example()).unwrap();
         config.should(equal(Config {
-            policies: Policies {
-                contributors_ratio: contributors_ratio::Config {
+            default_policies: Policies {
+                contributors_ratio: Some(contributors_ratio::Config {
                     max_number_of_releases_to_check: 3_usize,
                     max_contributor_ratio: 0.8,
-                    skip: vec!["react-*".to_string()],
-                    enabled: true,
-                },
-                min_number_of_releases_required: min_number_of_releases_required::Config {
+                }),
+                min_number_of_releases_required: Some(min_number_of_releases_required::Config {
                     min_number_of_releases: 3_usize,
                     days: 180_u64,
-                    skip: vec!["react-*".to_string()],
-                    enabled: false,
-                },
+                }),
             },
+            dependency_config: vec![],
         }));
     }
 
@@ -120,35 +139,111 @@ mod tests {
         config_string.should(equal(
             "\
 ---
-policies:
+default_policies:
   contributors_ratio:
     max_number_of_releases_to_check: 3
     max_contributor_ratio: 0.5
-    skip: []
-    enabled: true
   min_number_of_releases_required:
     min_number_of_releases: 3
     days: 365
-    skip: []
-    enabled: true
+dependency_config: []
 ",
         ));
     }
 
+    #[test]
+    fn it_loads_the_config_with_a_missing_policy() {
+        let config: Config =
+            Config::load_from_reader(&mut config_example_with_missing_policy()).unwrap();
+        config.should(equal(Config {
+            default_policies: Policies {
+                contributors_ratio: Some(contributors_ratio::Config {
+                    max_number_of_releases_to_check: 3_usize,
+                    max_contributor_ratio: 0.5,
+                }),
+                min_number_of_releases_required: None,
+            },
+            dependency_config: vec![],
+        }));
+    }
+
+    #[test]
+    fn it_loads_the_config_for_a_specific_policy() {
+        let config = Config::load_from_reader(&mut config_example_for_specific_policy()).unwrap();
+        config.should(equal(Config {
+            default_policies: Policies {
+                contributors_ratio: None,
+                min_number_of_releases_required: None,
+            },
+            dependency_config: vec![
+                DependencyConfiguration {
+                    name: "foo".to_string(),
+                    policies: Policies {
+                        contributors_ratio: Some(contributors_ratio::Config {
+                            max_number_of_releases_to_check: 3_usize,
+                            max_contributor_ratio: 0.8,
+                        }),
+                        min_number_of_releases_required: Some(
+                            min_number_of_releases_required::Config {
+                                min_number_of_releases: 3_usize,
+                                days: 180_u64,
+                            },
+                        ),
+                    },
+                },
+                DependencyConfiguration {
+                    name: "bar".to_string(),
+                    policies: Policies {
+                        contributors_ratio: Some(contributors_ratio::Config {
+                            max_number_of_releases_to_check: 5_usize,
+                            max_contributor_ratio: 0.5,
+                        }),
+                        min_number_of_releases_required: None,
+                    },
+                },
+            ],
+        }));
+    }
+
+    fn config_example_for_specific_policy() -> &'static [u8] {
+        "\
+dependency_config:
+- name: foo
+  policies:
+    contributors_ratio:
+      max_number_of_releases_to_check: 3
+      max_contributor_ratio: 0.8
+    min_number_of_releases_required:
+      min_number_of_releases: 3
+      days: 180
+- name: bar
+  policies:
+    contributors_ratio:
+      max_number_of_releases_to_check: 5
+      max_contributor_ratio: 0.5
+"
+        .as_bytes()
+    }
+
+    fn config_example_with_missing_policy() -> &'static [u8] {
+        "\
+default_policies:
+    contributors_ratio:
+        max_number_of_releases_to_check: 3
+        max_contributor_ratio: 0.5
+"
+        .as_bytes()
+    }
+
     fn config_example() -> &'static [u8] {
         "\
-policies:
+default_policies:
   contributors_ratio:
     max_number_of_releases_to_check: 3
     max_contributor_ratio: 0.8
-    skip:
-    - 'react-*'
   min_number_of_releases_required:
     min_number_of_releases: 3
     days: 180
-    skip:
-    - 'react-*'
-    enabled: false
 "
         .as_bytes()
     }

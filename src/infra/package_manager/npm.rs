@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use serde_json::Value;
 
 use crate::infra::http;
@@ -5,12 +7,17 @@ use crate::pkg::Repository;
 
 #[derive(Default)]
 pub struct InfoRetriever {
-    client: http::Client,
+    client: Arc<http::Client>,
 }
 
 impl InfoRetriever {
-    pub fn new(client: http::Client) -> Self {
-        Self { client }
+    pub fn new<C>(client: C) -> Self
+    where
+        C: Into<Arc<http::Client>>,
+    {
+        Self {
+            client: client.into(),
+        }
     }
 }
 
