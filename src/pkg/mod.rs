@@ -8,6 +8,7 @@ use crate::Evaluation;
 pub mod config;
 pub mod csv;
 pub mod engine;
+pub mod iter;
 pub mod package_manager;
 pub mod policy;
 pub mod recognizer;

@@ -48,7 +48,7 @@ fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box
 
     let engine = factory.engine()?;
 
-    let results = dependency_reader.par_bridge().map(|dep| {
+    let results = dependency_reader.par_bridge().map(move |dep| {
         let evaluation = engine.evaluate(&dep);
         if let Err(err) = evaluation {
             return Evaluation::Fail(dep, err.to_string());
@@ -69,9 +69,10 @@ fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box
             }
         }
         evaluation.unwrap()
-    }).collect::<Vec<_>>();
+    });
 
-    reporter.report_results(results)?;
+    let sequential_results = pkg::iter::ParallelToSequential::new(results, 1000);
+    reporter.report_results(sequential_results)?;
 
     Ok(())
 }
