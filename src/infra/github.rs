@@ -38,27 +38,21 @@ impl IssueIterator {
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36")
             .header("Accept", "application/vnd.github.v3+json");
 
-        match &self.auth {
-            Authentication::None => {}
-            Authentication::Basic(user, passwd) => {
-                request = request.basic_auth(user, passwd.as_ref());
-            }
+        if let Authentication::Basic(user, passwd) = &self.auth {
+            request = request.basic_auth(user, passwd.as_ref());
         }
 
         let response = request.send().context("Failed to get issues")?;
 
-        match response.headers().get("link") {
-            None => {}
-            Some(link) => {
-                let link = link.to_str().unwrap();
-                let link = link
-                    .split(',')
-                    .find(|link| link.contains("rel=\"next\""))
-                    .unwrap();
-                let link = link.split(';').next().unwrap();
-                let link = link.trim().trim_start_matches('<').trim_end_matches('>');
-                self.next_page = Some(link.to_string());
-            }
+        if let Some(link) = response.headers().get("link") {
+            let link = link.to_str().unwrap();
+            let link = link
+                .split(',')
+                .find(|link| link.contains("rel=\"next\""))
+                .unwrap();
+            let link = link.split(';').next().unwrap();
+            let link = link.trim().trim_start_matches('<').trim_end_matches('>');
+            self.next_page = Some(link.to_string());
         };
 
         let response_json = response.json::<Value>().context("Failed to parse issues")?;
