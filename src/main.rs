@@ -1,10 +1,10 @@
-#![forbid(unsafe_code)]
 #![deny(clippy::pedantic, clippy::style)]
 #![warn(unused)]
 
 mod cmd;
 mod factory;
 mod infra;
+mod lazy;
 mod pkg;
 
 use std::error::Error;

@@ -10,6 +10,7 @@ use crate::infra::git::RepositoryRetriever;
 use crate::infra::http;
 use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
+use crate::lazy::Lazy;
 use crate::pkg::config::Config;
 use crate::pkg::csv::Reporter;
 use crate::pkg::engine::{ExecutionConfig, PolicyExecutor};
@@ -22,22 +23,20 @@ use crate::Dependency;
 pub struct Factory {
     config: Rc<Config>,
 
-    info_retriever: Option<Arc<dyn InfoRetriever + Sync + Send>>,
-    http_client: Option<Arc<http::Client>>,
-    repository_retriever: Option<Arc<dyn CommitRetriever + Send + Sync>>,
+    info_retriever: Lazy<Arc<dyn InfoRetriever + Sync + Send>>,
+    http_client: Lazy<Arc<http::Client>>,
+    repository_retriever: Lazy<Arc<dyn CommitRetriever + Send + Sync>>,
 }
 
 const DAYS_TO_SECONDS: u64 = 86400;
 
 impl Factory {
     pub fn dependency_reader<'a, T: std::io::Read + Send + 'a>(
-        &mut self,
+        &self,
         reader: T,
         lock_file: &str,
     ) -> Box<dyn Iterator<Item = Dependency> + Send + 'a> {
-        let retriever = self
-            .info_retriever(lock_file)
-            .expect("unable to create the info retriever");
+        let retriever = self.info_retriever(lock_file);
 
         match Self::package_manager(lock_file) {
             PackageManager::Npm => Box::new(
@@ -53,7 +52,7 @@ impl Factory {
         }
     }
 
-    fn execution_configs(&mut self) -> Result<Vec<ExecutionConfig>, Box<dyn Error>> {
+    fn execution_configs(&self) -> Result<Vec<ExecutionConfig>, Box<dyn Error>> {
         let mut execution_configs = vec![];
         let repository_retriever = self.repository_retriever();
 
@@ -105,36 +104,33 @@ impl Factory {
         Ok(execution_configs)
     }
 
-    fn info_retriever(
-        &mut self,
-        lock_file: &str,
-    ) -> Result<Arc<dyn InfoRetriever + Sync + Send>, Box<dyn Error>> {
-        if let Some(ref retriever) = self.info_retriever {
-            return Ok(retriever.clone());
-        }
+    fn info_retriever(&self, lock_file: &str) -> Arc<dyn InfoRetriever + Sync + Send> {
+        let info_retriever = &self.info_retriever;
+        info_retriever
+            .get(|| {
+                let http_client = self.http_client();
+                let retriever: Arc<dyn InfoRetriever + Sync + Send> =
+                    match Self::package_manager(lock_file) {
+                        PackageManager::Npm => Arc::new(NpmInfoRetriever::new(http_client)),
+                        PackageManager::Cargo => Arc::new(CargoInfoRetriever::new(http_client)),
+                    };
 
-        let http_client = self.http_client()?;
-        let retriever: Arc<dyn InfoRetriever + Sync + Send> = match Self::package_manager(lock_file)
-        {
-            PackageManager::Npm => Arc::new(NpmInfoRetriever::new(http_client)),
-            PackageManager::Cargo => Arc::new(CargoInfoRetriever::new(http_client)),
-        };
-        self.info_retriever = Some(retriever.clone());
-        Ok(retriever)
+                retriever
+            })
+            .clone()
     }
 
-    fn http_client(&mut self) -> Result<Arc<http::Client>, Box<dyn std::error::Error>> {
-        if let Some(http_client) = &self.http_client {
-            return Ok(http_client.clone());
-        }
+    fn http_client(&self) -> Arc<http::Client> {
+        self.http_client
+            .get(|| {
+                let reqwest_client = reqwest::blocking::Client::builder()
+                    .timeout(Duration::from_secs(600))
+                    .build()
+                    .expect("unable to create the reqwest client");
 
-        let reqwest_client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(600))
-            .build()?;
-
-        let client = Arc::new(http::Client::new(reqwest_client));
-        self.http_client = Some(client.clone());
-        Ok(client)
+                Arc::new(http::Client::new(reqwest_client))
+            })
+            .clone()
     }
 
     fn package_manager(lock_file: &str) -> PackageManager {
@@ -146,14 +142,14 @@ impl Factory {
         })
     }
 
-    fn repository_retriever(&mut self) -> Arc<dyn CommitRetriever + Send + Sync> {
-        if let Some(retriever) = &self.repository_retriever {
-            return retriever.clone();
-        }
+    fn repository_retriever(&self) -> Arc<dyn CommitRetriever + Send + Sync> {
+        self.repository_retriever
+            .get(|| {
+                let git_repository_retriever = RepositoryRetriever::new();
 
-        let retriever = Arc::new(RepositoryRetriever::new());
-        self.repository_retriever = Some(retriever.clone());
-        retriever
+                Arc::new(git_repository_retriever)
+            })
+            .clone()
     }
 
     pub fn result_reporter() -> Reporter<File> {
@@ -176,9 +172,9 @@ impl Factory {
         Self {
             config,
 
-            info_retriever: None,
-            http_client: None,
-            repository_retriever: None,
+            info_retriever: Lazy::new(),
+            http_client: Lazy::new(),
+            repository_retriever: Lazy::new(),
         }
     }
 }
