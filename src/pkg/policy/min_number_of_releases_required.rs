@@ -9,10 +9,10 @@ use crate::pkg::policy::Policy;
 use crate::Dependency;
 
 pub struct MinNumberOfReleasesRequired {
-    retriever: Arc<dyn CommitRetriever + Sync + Send>,
+    retriever: Arc<dyn CommitRetriever>,
     number_of_releases: usize,
     duration: Duration,
-    clock: Box<dyn Clock + Sync + Send>,
+    clock: Box<dyn Clock>,
 }
 
 impl Policy for MinNumberOfReleasesRequired {
@@ -52,10 +52,10 @@ impl MinNumberOfReleasesRequired {
         retriever: R,
         number_of_releases: usize,
         duration: Duration,
-        clock: Box<dyn Clock + Sync + Send>,
+        clock: Box<dyn Clock>,
     ) -> Self
     where
-        R: Into<Arc<dyn CommitRetriever + Sync + Send>>,
+        R: Into<Arc<dyn CommitRetriever>>,
     {
         Self {
             retriever: retriever.into(),
@@ -106,7 +106,7 @@ mod tests {
                         },
                     ])
                 });
-            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+            Box::new(retriever) as Box<dyn CommitRetriever>
         };
         let mut clock = Box::new(MockClock::new());
         clock.expect_now_timestamp().return_const(1_648_583_009_u64);
@@ -146,7 +146,7 @@ mod tests {
                         commit_timestamp: 1_640_477_360,
                     }])
                 });
-            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+            Box::new(retriever) as Box<dyn CommitRetriever>
         };
         let mut clock = Box::new(MockClock::new());
         clock.expect_now_timestamp().return_const(1_648_583_009_u64);
@@ -200,7 +200,7 @@ mod tests {
                         },
                     ])
                 });
-            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+            Box::new(retriever) as Box<dyn CommitRetriever>
         };
         let mut clock = Box::new(MockClock::new());
         clock.expect_now_timestamp().return_const(1_648_583_009_u64);

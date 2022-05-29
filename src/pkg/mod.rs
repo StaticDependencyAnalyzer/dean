@@ -14,12 +14,12 @@ pub mod policy;
 pub mod recognizer;
 
 #[cfg_attr(test, mockall::automock)]
-pub trait InfoRetriever {
+pub trait InfoRetriever: Sync + Send {
     fn latest_version(&self, dependency: &str) -> Result<String, String>;
     fn repository(&self, dependency: &str) -> Result<Repository, String>;
 }
 
-pub trait DependencyRetriever {
+pub trait DependencyRetriever: Sync + Send {
     type Itr: IntoIterator<Item = Dependency>;
     fn dependencies(&self) -> Result<Self::Itr, String>;
 }

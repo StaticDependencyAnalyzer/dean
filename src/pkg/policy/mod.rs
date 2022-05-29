@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 mod contributors_ratio;
+pub mod max_issue_lifespan;
 mod min_number_of_releases_required;
 
 pub use contributors_ratio::ContributorsRatio;
@@ -25,7 +26,7 @@ pub struct Tag {
 }
 
 #[cfg_attr(test, mockall::automock)]
-pub trait CommitRetriever {
+pub trait CommitRetriever: Sync + Send {
     /// Retrieves the commits for each tag.
     fn commits_for_each_tag(
         &self,
@@ -37,7 +38,7 @@ pub trait CommitRetriever {
 }
 
 #[cfg_attr(test, mockall::automock)]
-pub trait Clock {
+pub trait Clock: Sync + Send {
     /// Retrieves the current timestamp
     fn now_timestamp(&self) -> u64;
 }

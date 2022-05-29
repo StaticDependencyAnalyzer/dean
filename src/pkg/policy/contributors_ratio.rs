@@ -9,7 +9,7 @@ use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
 use crate::Dependency;
 
 pub struct ContributorsRatio {
-    retriever: Arc<dyn CommitRetriever + Send + Sync>,
+    retriever: Arc<dyn CommitRetriever>,
     max_number_of_releases_to_check: usize,
     max_contributor_ratio: f64,
 }
@@ -77,13 +77,13 @@ impl Policy for ContributorsRatio {
 }
 
 impl ContributorsRatio {
-    pub fn new(
-        retriever: Arc<dyn CommitRetriever + Send + Sync>,
+    pub fn new<R: Into<Arc<dyn CommitRetriever>>>(
+        retriever: R,
         max_number_of_releases_to_check: usize,
         max_contributor_ratio: f64,
     ) -> Self {
         Self {
-            retriever,
+            retriever: retriever.into(),
             max_number_of_releases_to_check,
             max_contributor_ratio,
         }
@@ -104,34 +104,31 @@ mod tests {
 
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_lower_than_90_percent_it_should_pass() {
-        let mut retriever = Arc::new(MockCommitRetriever::new());
-        Arc::get_mut(&mut retriever)
-            .unwrap()
-            .expect_all_tags()
-            .with(eq("https://github.com/some_org/some_repo"))
-            .returning(|_| {
-                Ok(vec![
-                    Tag {
-                        name: "v0.1.2".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_640_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.3".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_641_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.4".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_642_477_360,
-                    },
-                ])
-            });
-        Arc::get_mut(&mut retriever)
-            .unwrap()
-            .expect_commits_for_each_tag()
-            .returning(|_| {
+        let retriever = {
+            let mut retriever = MockCommitRetriever::new();
+            retriever
+                .expect_all_tags()
+                .with(eq("https://github.com/some_org/some_repo"))
+                .returning(|_| {
+                    Ok(vec![
+                        Tag {
+                            name: "v0.1.2".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_640_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.3".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_641_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.4".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_642_477_360,
+                        },
+                    ])
+                });
+            retriever.expect_commits_for_each_tag().returning(|_| {
                 Ok({
                     let mut map = HashMap::new();
                     map.insert(
@@ -154,6 +151,8 @@ mod tests {
                     map
                 })
             });
+            Box::new(retriever) as Box<dyn CommitRetriever>
+        };
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
         let dependency = Dependency {
@@ -169,34 +168,31 @@ mod tests {
     }
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_higher_than_90_percent_it_should_fail() {
-        let mut retriever = Arc::new(MockCommitRetriever::new());
-        Arc::get_mut(&mut retriever)
-            .unwrap()
-            .expect_all_tags()
-            .with(eq("https://github.com/some_org/some_repo"))
-            .returning(|_| {
-                Ok(vec![
-                    Tag {
-                        name: "v0.1.2".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_640_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.3".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_641_477_360,
-                    },
-                    Tag {
-                        name: "v0.1.4".to_string(),
-                        commit_id: "234234231".to_string(),
-                        commit_timestamp: 1_642_477_360,
-                    },
-                ])
-            });
-        Arc::get_mut(&mut retriever)
-            .unwrap()
-            .expect_commits_for_each_tag()
-            .returning(|_| {
+        let retriever = {
+            let mut retriever = MockCommitRetriever::new();
+            retriever
+                .expect_all_tags()
+                .with(eq("https://github.com/some_org/some_repo"))
+                .returning(|_| {
+                    Ok(vec![
+                        Tag {
+                            name: "v0.1.2".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_640_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.3".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_641_477_360,
+                        },
+                        Tag {
+                            name: "v0.1.4".to_string(),
+                            commit_id: "234234231".to_string(),
+                            commit_timestamp: 1_642_477_360,
+                        },
+                    ])
+                });
+            retriever.expect_commits_for_each_tag().returning(|_| {
                 Ok({
                     let mut map = HashMap::new();
                     map.insert(
@@ -211,6 +207,8 @@ mod tests {
                     map
                 })
             });
+            Box::new(retriever) as Box<dyn CommitRetriever>
+        };
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
         let dependency = Dependency {

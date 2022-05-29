@@ -7,15 +7,15 @@ use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
 pub struct DependencyReader<T>
 where
-    T: std::io::Read,
+    T: std::io::Read + Send,
 {
-    npm_info_retriever: Arc<dyn InfoRetriever + Send + Sync>,
+    npm_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
 }
 
 impl<T> DependencyRetriever for DependencyReader<T>
 where
-    T: std::io::Read,
+    T: std::io::Read + Send,
 {
     type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
     fn dependencies(&self) -> Result<Box<dyn Iterator<Item = Dependency> + Send>, String> {
@@ -62,11 +62,11 @@ where
 
 impl<T> DependencyReader<T>
 where
-    T: std::io::Read,
+    T: std::io::Read + Send,
 {
     pub fn new<R>(reader: T, retriever: R) -> Self
     where
-        R: Into<Arc<dyn InfoRetriever + Send + Sync>>,
+        R: Into<Arc<dyn InfoRetriever>>,
     {
         Self {
             reader: reader.into(),
@@ -103,7 +103,7 @@ mod tests {
                     })
                 })
                 .times(1);
-            retriever as Box<dyn InfoRetriever + Send + Sync>
+            retriever as Box<dyn InfoRetriever>
         };
 
         let dependency_reader = DependencyReader::new(npm_package_lock(), retriever);

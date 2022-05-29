@@ -1,10 +1,10 @@
-#![forbid(unsafe_code)]
 #![deny(clippy::pedantic, clippy::style)]
 #![warn(unused)]
 
 mod cmd;
 mod factory;
 mod infra;
+mod lazy;
 mod pkg;
 
 use std::error::Error;
@@ -17,6 +17,7 @@ use rayon::prelude::*;
 use crate::cmd::{parse_args, Commands, ConfigCommands};
 use crate::factory::Factory;
 use crate::pkg::config::Config;
+use crate::pkg::iter::ToSequential;
 use crate::pkg::policy::{Evaluation, Policy};
 use crate::pkg::{Dependency, ResultReporter};
 
@@ -71,7 +72,7 @@ fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box
         evaluation.unwrap()
     });
 
-    let sequential_results = pkg::iter::ParallelToSequential::new(results, 1000);
+    let sequential_results = results.to_seq(1000);
     reporter.report_results(sequential_results)?;
 
     Ok(())

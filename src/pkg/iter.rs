@@ -1,5 +1,21 @@
 use rayon::iter::ParallelIterator;
 
+pub trait ToSequential<T>
+where
+    T: ParallelIterator,
+{
+    fn to_seq(self, buffer_size: usize) -> ParallelToSequential<T>;
+}
+
+impl<T> ToSequential<T> for T
+where
+    T: ParallelIterator + 'static,
+{
+    fn to_seq(self, buffer_size: usize) -> ParallelToSequential<T> {
+        ParallelToSequential::new(self, buffer_size)
+    }
+}
+
 /// An iterator that transforms a `ParallelIterator` from rayon, into a standard sequential Iterator.
 pub struct ParallelToSequential<T>
 where
@@ -22,7 +38,7 @@ impl<T> ParallelToSequential<T>
 where
     T: ParallelIterator + 'static,
 {
-    pub fn new(parallel: T, size: usize) -> Self {
+    fn new(parallel: T, size: usize) -> Self {
         let (sender, receiver) = std::sync::mpsc::sync_channel(size);
 
         let join_handle = std::thread::spawn(move || {
