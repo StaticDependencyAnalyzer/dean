@@ -9,7 +9,7 @@ use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
 use crate::Dependency;
 
 pub struct ContributorsRatio {
-    retriever: Arc<dyn CommitRetriever + Send + Sync>,
+    retriever: Arc<dyn CommitRetriever>,
     max_number_of_releases_to_check: usize,
     max_contributor_ratio: f64,
 }
@@ -77,7 +77,7 @@ impl Policy for ContributorsRatio {
 }
 
 impl ContributorsRatio {
-    pub fn new<R: Into<Arc<dyn CommitRetriever + Send + Sync>>>(
+    pub fn new<R: Into<Arc<dyn CommitRetriever>>>(
         retriever: R,
         max_number_of_releases_to_check: usize,
         max_contributor_ratio: f64,
@@ -151,7 +151,7 @@ mod tests {
                     map
                 })
             });
-            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+            Box::new(retriever) as Box<dyn CommitRetriever>
         };
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 
@@ -207,7 +207,7 @@ mod tests {
                     map
                 })
             });
-            Box::new(retriever) as Box<dyn CommitRetriever + Send + Sync>
+            Box::new(retriever) as Box<dyn CommitRetriever>
         };
         let contributors_ratio_policy = ContributorsRatio::new(retriever, 1, 0.9);
 

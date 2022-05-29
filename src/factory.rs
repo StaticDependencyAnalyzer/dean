@@ -23,9 +23,9 @@ use crate::Dependency;
 pub struct Factory {
     config: Rc<Config>,
 
-    info_retriever: Lazy<Arc<dyn InfoRetriever + Sync + Send>>,
+    info_retriever: Lazy<Arc<dyn InfoRetriever>>,
     http_client: Lazy<Arc<http::Client>>,
-    repository_retriever: Lazy<Arc<dyn CommitRetriever + Send + Sync>>,
+    repository_retriever: Lazy<Arc<dyn CommitRetriever>>,
 }
 
 const DAYS_TO_SECONDS: u64 = 86400;
@@ -104,18 +104,16 @@ impl Factory {
         Ok(execution_configs)
     }
 
-    fn info_retriever(&self, lock_file: &str) -> Arc<dyn InfoRetriever + Sync + Send> {
+    fn info_retriever(&self, lock_file: &str) -> Arc<dyn InfoRetriever> {
         let info_retriever = &self.info_retriever;
         info_retriever
             .get(|| {
                 let http_client = self.http_client();
-                let retriever: Arc<dyn InfoRetriever + Sync + Send> =
-                    match Self::package_manager(lock_file) {
-                        PackageManager::Npm => Arc::new(NpmInfoRetriever::new(http_client)),
-                        PackageManager::Cargo => Arc::new(CargoInfoRetriever::new(http_client)),
-                    };
 
-                retriever
+                match Self::package_manager(lock_file) {
+                    PackageManager::Npm => Arc::new(NpmInfoRetriever::new(http_client)),
+                    PackageManager::Cargo => Arc::new(CargoInfoRetriever::new(http_client)),
+                }
             })
             .clone()
     }
@@ -142,7 +140,7 @@ impl Factory {
         })
     }
 
-    fn repository_retriever(&self) -> Arc<dyn CommitRetriever + Send + Sync> {
+    fn repository_retriever(&self) -> Arc<dyn CommitRetriever> {
         self.repository_retriever
             .get(|| {
                 let git_repository_retriever = RepositoryRetriever::new();
