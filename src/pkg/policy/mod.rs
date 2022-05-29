@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::error::Error;
 
 mod contributors_ratio;
+pub mod max_issue_lifespan;
 mod min_number_of_releases_required;
 
 pub use contributors_ratio::ContributorsRatio;
