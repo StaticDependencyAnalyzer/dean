@@ -5,7 +5,6 @@ use std::error::Error;
 use anyhow::Context;
 use concurrent_lru::sharded::LruCache;
 use git2::Oid;
-use log::error;
 
 use crate::pkg::policy::{Commit, CommitRetriever, Tag};
 
@@ -118,39 +117,6 @@ impl Repository {
         Ok(tags)
     }
 
-    fn all_commits(&self) -> Result<Vec<Commit>, Box<dyn Error>> {
-        let mut revwalk = self
-            .repository
-            .revwalk()
-            .context("unable to create a revwalk for repository")?;
-        revwalk
-            .push_head()
-            .context("unable to push head to revwalk")?;
-
-        let commits = revwalk
-            .into_iter()
-            .flatten()
-            .filter_map(|oid| {
-                let commit = self.repository.find_commit(oid);
-                match commit {
-                    Ok(commit) => Some(commit),
-                    Err(error) => {
-                        error!("unable to find commit for Oid {}: {}", oid, error);
-                        None
-                    }
-                }
-            })
-            .map(|commit| Commit {
-                id: commit.id().to_string(),
-                author_email: commit.author().email().unwrap().into(),
-                author_name: commit.author().name().unwrap().into(),
-                creation_timestamp: commit.time().seconds(),
-            })
-            .collect::<Vec<_>>();
-
-        Ok(commits)
-    }
-
     fn commit_ids_for_each_tag(&self) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
         let mut result = HashMap::new();
 
@@ -214,21 +180,6 @@ mod tests {
     use expects::Subject;
 
     use super::*;
-
-    #[test]
-    fn it_retrieves_the_commits_of_a_repository() {
-        let repository = Repository::new("https://github.com/libgit2/libgit2").unwrap();
-
-        let commits = repository.all_commits().unwrap();
-
-        assert!(commits.len() >= 14483);
-        commits.should(contain_element(Commit {
-            id: "2a0d0bd19b5d13e2ab7f3780e094404828cbb9a7".into(),
-            author_name: "Edward Thomson".into(),
-            author_email: "ethomson@edwardthomson.com".into(),
-            creation_timestamp: 1_646_268_794,
-        }));
-    }
 
     #[test]
     fn it_retrieves_the_tags_of_a_repository() {
