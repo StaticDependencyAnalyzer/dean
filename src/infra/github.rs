@@ -1,7 +1,8 @@
+use std::iter::Filter;
 use std::sync::Arc;
 
 use anyhow::Context;
-use log::{error, trace};
+use log::{debug, error};
 use serde_json::Value;
 
 #[derive(Clone)]
@@ -16,14 +17,14 @@ pub struct Client {
 }
 
 #[derive(Clone)]
-pub struct IssueIterator {
+pub struct IssuePullRequestIterator {
     client: Arc<reqwest::blocking::Client>,
     next_page: Option<String>,
     buffer: Vec<Value>,
     auth: Authentication,
 }
 
-impl IssueIterator {
+impl IssuePullRequestIterator {
     fn update_buffer(&mut self) -> Result<(), Box<dyn std::error::Error>> {
         if self.next_page.is_none() {
             return Ok(());
@@ -31,7 +32,7 @@ impl IssueIterator {
 
         let url = self.next_page.take().unwrap();
 
-        trace!("Fetching issues from {}", url);
+        debug!(target: "dean::github_client", "Fetching issues from {}", url);
         let mut request = self
             .client
             .get(url)
@@ -45,25 +46,28 @@ impl IssueIterator {
         let response = request.send().context("Failed to get issues")?;
 
         if let Some(link) = response.headers().get("link") {
-            let link = link.to_str().unwrap();
+            let link = link.to_str().unwrap_or("");
             let link = link
                 .split(',')
                 .find(|link| link.contains("rel=\"next\""))
-                .unwrap();
-            let link = link.split(';').next().unwrap();
+                .unwrap_or("");
+            let link = link.split(';').next().unwrap_or("");
             let link = link.trim().trim_start_matches('<').trim_end_matches('>');
-            self.next_page = Some(link.to_string());
+            if !link.is_empty() {
+                self.next_page = Some(link.to_string());
+            }
         };
+
+        if response.status().as_u16() == 403 {
+            return Err("Github API rate limit exceeded, please insert Github credentials for increased rate limit".into());
+        }
 
         let response_json = response.json::<Value>().context("Failed to parse issues")?;
 
         let issues = response_json
             .as_array()
             .context("the response is not an array")?
-            .iter()
-            .filter(|issue| issue.get("pull_request").is_none())
-            .cloned()
-            .collect::<Vec<_>>();
+            .clone();
 
         self.buffer.extend_from_slice(&issues);
 
@@ -71,7 +75,7 @@ impl IssueIterator {
     }
 }
 
-impl Iterator for IssueIterator {
+impl Iterator for IssuePullRequestIterator {
     type Item = Value;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -97,8 +101,12 @@ impl Client {
         }
     }
 
-    pub fn get_issues(&self, organization: &str, repo: &str) -> IssueIterator {
-        IssueIterator {
+    pub fn get_issues(
+        &self,
+        organization: &str,
+        repo: &str,
+    ) -> Filter<IssuePullRequestIterator, fn(&Value) -> bool> {
+        IssuePullRequestIterator {
             client: self.client.clone(),
             next_page: Some(format!(
                 "https://api.github.com/repos/{}/{}/issues?state=all&per_page=100&page=1",
@@ -107,6 +115,24 @@ impl Client {
             buffer: vec![],
             auth: self.auth.clone(),
         }
+        .filter(|issue| issue.get("pull_request").is_none())
+    }
+
+    pub fn get_pull_requests(
+        &self,
+        organization: &str,
+        repo: &str,
+    ) -> Filter<IssuePullRequestIterator, fn(&Value) -> bool> {
+        IssuePullRequestIterator {
+            client: self.client.clone(),
+            next_page: Some(format!(
+                "https://api.github.com/repos/{}/{}/issues?state=all&per_page=100&page=1",
+                organization, repo
+            )),
+            buffer: vec![],
+            auth: self.auth.clone(),
+        }
+        .filter(|issue| issue.get("pull_request").is_some())
     }
 }
 
@@ -121,6 +147,15 @@ mod tests {
         let issues = client.get_issues("StaticDependencyAnalyzer", "dean");
 
         assert!(issues.count() >= 6);
+    }
+
+    #[test]
+    fn it_retrieves_all_prs_from_dean() {
+        let client = Client::new(reqwest::blocking::Client::new(), authentication());
+
+        let prs = client.get_pull_requests("StaticDependencyAnalyzer", "dean");
+
+        assert!(prs.count() >= 6);
     }
 
     #[test]

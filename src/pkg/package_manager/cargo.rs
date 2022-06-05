@@ -65,7 +65,7 @@ where
         let info_retriever = self.cargo_info_retriever.clone();
         let dependencies = name_and_version_from_packages.map(move |(name, version)| {
             info!(
-                target: "cargo-dependency-retriever",
+                target: "dean::cargo-dependency-retriever",
                 "retrieving information for dependency [name={}, version={}]",
                 name, &version
             );

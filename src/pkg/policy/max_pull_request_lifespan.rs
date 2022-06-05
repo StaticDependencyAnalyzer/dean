@@ -4,26 +4,26 @@ use std::sync::Arc;
 use crate::pkg::policy::ContributionDataRetriever;
 use crate::{Dependency, Evaluation, Policy};
 
-pub struct MaxIssueLifespan {
+pub struct MaxPullRequestLifespan {
     max_issue_lifespan: f64,
     contribution_data_retriever: Arc<dyn ContributionDataRetriever>,
 }
 
-impl Policy for MaxIssueLifespan {
+impl Policy for MaxPullRequestLifespan {
     fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
         let issue_lifespan = self
             .contribution_data_retriever
-            .get_issue_lifespan(&dependency.repository)?;
+            .get_pull_request_lifespan(&dependency.repository)?;
 
         if issue_lifespan > self.max_issue_lifespan {
-            Ok(Evaluation::Fail(dependency.clone(), format!("the issue lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan)))
+            Ok(Evaluation::Fail(dependency.clone(), format!("the pull request lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan)))
         } else {
             Ok(Evaluation::Pass(dependency.clone()))
         }
     }
 }
 
-impl MaxIssueLifespan {
+impl MaxPullRequestLifespan {
     pub fn new<C: Into<Arc<dyn ContributionDataRetriever>>>(
         contribution_data_retriever: C,
         max_issue_lifespan: f64,
@@ -46,17 +46,17 @@ mod tests {
     use crate::{Dependency, Evaluation};
 
     #[test]
-    fn it_passes_if_the_issue_lifetime_is_lower_than_the_maximum_allowed() {
+    fn it_passes_if_the_pull_request_lifetime_is_lower_than_the_maximum_allowed() {
         let retriever = {
             let mut retriever = MockContributionDataRetriever::new();
             retriever
-                .expect_get_issue_lifespan()
+                .expect_get_pull_request_lifespan()
                 .return_once(|_| Ok(42_f64));
             Box::new(retriever) as Box<dyn ContributionDataRetriever>
         };
 
         let max_allowed_issue_lifespan = 100_f64;
-        let issue_lifespan = MaxIssueLifespan::new(retriever, max_allowed_issue_lifespan);
+        let issue_lifespan = MaxPullRequestLifespan::new(retriever, max_allowed_issue_lifespan);
 
         let evaluation = issue_lifespan.evaluate(&dependency());
         evaluation
@@ -65,23 +65,23 @@ mod tests {
     }
 
     #[test]
-    fn it_fails_if_the_issue_lifetime_is_higher_than_the_maximum_expected() {
+    fn it_fails_if_the_pull_request_lifetime_is_higher_than_the_maximum_expected() {
         let retriever = {
             let mut retriever = MockContributionDataRetriever::new();
             retriever
-                .expect_get_issue_lifespan()
+                .expect_get_pull_request_lifespan()
                 .return_once(|_| Ok(102_f64));
             Box::new(retriever) as Box<dyn ContributionDataRetriever>
         };
 
         let max_allowed_issue_lifespan = 100_f64;
-        let issue_lifespan = MaxIssueLifespan::new(retriever, max_allowed_issue_lifespan);
+        let issue_lifespan = MaxPullRequestLifespan::new(retriever, max_allowed_issue_lifespan);
 
         let evaluation = issue_lifespan.evaluate(&dependency());
         match evaluation.unwrap() {
             Evaluation::Fail(dep, reason) => {
                 dep.should(equal(dependency()));
-                reason.should(equal("the issue lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds"));
+                reason.should(equal("the pull request lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds"));
             }
             Evaluation::Pass(_) => {
                 unreachable!()

@@ -80,7 +80,8 @@ fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box
 
 fn load_logger() -> Result<(), Box<dyn std::error::Error>> {
     simple_logger::SimpleLogger::new()
-        .with_level(LevelFilter::Info)
+        .with_level(LevelFilter::Off)
+        .with_module_level("dean", LevelFilter::Debug)
         .with_colors(true)
         .env()
         .init()?;

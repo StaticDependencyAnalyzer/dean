@@ -45,7 +45,7 @@ where
         let dependencies = deps.map(move |(name, version)| {
             let retriever = npm_info_retriever.clone();
             info!(
-                target: "npm-dependency-retriever",
+                target: "dean::npm-dependency-retriever",
                 "retrieving information for dependency [name={}, version={}]",
                 name, version
             );

@@ -1,11 +1,16 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use crate::pkg::Repository;
+
 mod contributors_ratio;
-pub mod max_issue_lifespan;
+mod max_issue_lifespan;
+mod max_pull_request_lifespan;
 mod min_number_of_releases_required;
 
 pub use contributors_ratio::ContributorsRatio;
+pub use max_issue_lifespan::MaxIssueLifespan;
+pub use max_pull_request_lifespan::MaxPullRequestLifespan;
 pub use min_number_of_releases_required::MinNumberOfReleasesRequired;
 
 use crate::Dependency;
@@ -35,6 +40,12 @@ pub trait CommitRetriever: Sync + Send {
 
     /// Retrieves all the tags from a repository ordered by time, where the latest one is the most recent.
     fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>>;
+}
+
+#[cfg_attr(test, mockall::automock)]
+pub trait ContributionDataRetriever: Send + Sync {
+    fn get_issue_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>>;
+    fn get_pull_request_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>>;
 }
 
 #[cfg_attr(test, mockall::automock)]
