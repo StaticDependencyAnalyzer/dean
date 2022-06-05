@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 pub mod contributors_ratio;
+pub mod max_issue_lifespan;
+pub mod max_pull_request_lifespan;
 pub mod min_number_of_releases_required;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -21,6 +23,8 @@ impl Default for Config {
                     min_number_of_releases_required::Config::default(),
                 ),
                 contributors_ratio: Some(contributors_ratio::Config::default()),
+                max_issue_lifespan: Some(max_issue_lifespan::Config::default()),
+                max_pull_request_lifespan: Some(max_pull_request_lifespan::Config::default()),
             },
             dependency_config: vec![],
         }
@@ -41,6 +45,8 @@ pub struct DependencyConfiguration {
 pub struct Policies {
     pub contributors_ratio: Option<contributors_ratio::Config>,
     pub min_number_of_releases_required: Option<min_number_of_releases_required::Config>,
+    pub max_issue_lifespan: Option<max_issue_lifespan::Config>,
+    pub max_pull_request_lifespan: Option<max_pull_request_lifespan::Config>,
 }
 
 impl Config {
@@ -109,6 +115,12 @@ mod tests {
                     min_number_of_releases: 3_usize,
                     days: 365_u64,
                 }),
+                max_issue_lifespan: Some(max_issue_lifespan::Config {
+                    max_lifespan_in_seconds: 2_592_000_usize,
+                }),
+                max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
+                    max_lifespan_in_seconds: 2_592_000_usize,
+                }),
             },
             dependency_config: vec![],
         }));
@@ -126,6 +138,12 @@ mod tests {
                 min_number_of_releases_required: Some(min_number_of_releases_required::Config {
                     min_number_of_releases: 3_usize,
                     days: 180_u64,
+                }),
+                max_issue_lifespan: Some(max_issue_lifespan::Config {
+                    max_lifespan_in_seconds: 2_592_000_usize,
+                }),
+                max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
+                    max_lifespan_in_seconds: 2_592_000_usize,
                 }),
             },
             dependency_config: vec![],
@@ -146,6 +164,10 @@ default_policies:
   min_number_of_releases_required:
     min_number_of_releases: 3
     days: 365
+  max_issue_lifespan:
+    max_lifespan_in_seconds: 2592000
+  max_pull_request_lifespan:
+    max_lifespan_in_seconds: 2592000
 dependency_config: []
 ",
         ));
@@ -162,6 +184,8 @@ dependency_config: []
                     max_contributor_ratio: 0.5,
                 }),
                 min_number_of_releases_required: None,
+                max_issue_lifespan: None,
+                max_pull_request_lifespan: None,
             },
             dependency_config: vec![],
         }));
@@ -174,6 +198,8 @@ dependency_config: []
             default_policies: Policies {
                 contributors_ratio: None,
                 min_number_of_releases_required: None,
+                max_issue_lifespan: None,
+                max_pull_request_lifespan: None,
             },
             dependency_config: vec![
                 DependencyConfiguration {
@@ -189,6 +215,12 @@ dependency_config: []
                                 days: 180_u64,
                             },
                         ),
+                        max_issue_lifespan: Some(max_issue_lifespan::Config {
+                            max_lifespan_in_seconds: 2_592_000_usize,
+                        }),
+                        max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
+                            max_lifespan_in_seconds: 2_592_000_usize,
+                        }),
                     },
                 },
                 DependencyConfiguration {
@@ -199,6 +231,8 @@ dependency_config: []
                             max_contributor_ratio: 0.5,
                         }),
                         min_number_of_releases_required: None,
+                        max_issue_lifespan: None,
+                        max_pull_request_lifespan: None,
                     },
                 },
             ],
@@ -216,6 +250,10 @@ dependency_config:
     min_number_of_releases_required:
       min_number_of_releases: 3
       days: 180
+    max_issue_lifespan:
+      max_lifespan_in_seconds: 2592000
+    max_pull_request_lifespan:
+      max_lifespan_in_seconds: 2592000
 - name: bar
   policies:
     contributors_ratio:
@@ -244,6 +282,10 @@ default_policies:
   min_number_of_releases_required:
     min_number_of_releases: 3
     days: 180
+  max_issue_lifespan:
+    max_lifespan_in_seconds: 2592000
+  max_pull_request_lifespan:
+    max_lifespan_in_seconds: 2592000
 "
         .as_bytes()
     }

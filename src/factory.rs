@@ -7,15 +7,19 @@ use std::time::Duration;
 
 use crate::infra::clock::Clock;
 use crate::infra::git::RepositoryRetriever;
-use crate::infra::http;
 use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
+use crate::infra::repo_contribution;
+use crate::infra::{github, http};
 use crate::lazy::Lazy;
 use crate::pkg::config::Config;
 use crate::pkg::csv::Reporter;
 use crate::pkg::engine::{ExecutionConfig, PolicyExecutor};
 use crate::pkg::package_manager::{cargo, npm};
-use crate::pkg::policy::{CommitRetriever, ContributorsRatio, MinNumberOfReleasesRequired, Policy};
+use crate::pkg::policy::{
+    CommitRetriever, ContributionDataRetriever, ContributorsRatio, MaxIssueLifespan,
+    MaxPullRequestLifespan, MinNumberOfReleasesRequired, Policy,
+};
 use crate::pkg::recognizer::PackageManager;
 use crate::pkg::{DependencyRetriever, InfoRetriever};
 use crate::Dependency;
@@ -26,6 +30,8 @@ pub struct Factory {
     info_retriever: Lazy<Arc<dyn InfoRetriever>>,
     http_client: Lazy<Arc<http::Client>>,
     repository_retriever: Lazy<Arc<dyn CommitRetriever>>,
+    contribution_retriever: Lazy<Arc<dyn ContributionDataRetriever>>,
+    github_client: Lazy<Arc<github::Client>>,
 }
 
 const DAYS_TO_SECONDS: u64 = 86400;
@@ -74,6 +80,24 @@ impl Factory {
                     policy.max_contributor_ratio,
                 )));
             }
+            if let Some(policy) = &dependency_config.policies.max_issue_lifespan {
+                policies.push(Box::new(
+                    #[allow(clippy::cast_precision_loss)]
+                    MaxIssueLifespan::new(
+                        self.contribution_retriever(),
+                        policy.max_lifespan_in_seconds as f64,
+                    ),
+                ));
+            }
+            if let Some(policy) = &dependency_config.policies.max_pull_request_lifespan {
+                policies.push(Box::new(
+                    #[allow(clippy::cast_precision_loss)]
+                    MaxPullRequestLifespan::new(
+                        self.contribution_retriever(),
+                        policy.max_lifespan_in_seconds as f64,
+                    ),
+                ));
+            }
 
             execution_configs.push(ExecutionConfig::new(
                 policies,
@@ -96,6 +120,24 @@ impl Factory {
                 policy.max_number_of_releases_to_check,
                 policy.max_contributor_ratio,
             )));
+        }
+        if let Some(policy) = &self.config.default_policies.max_issue_lifespan {
+            policies.push(Box::new(
+                #[allow(clippy::cast_precision_loss)]
+                MaxIssueLifespan::new(
+                    self.contribution_retriever(),
+                    policy.max_lifespan_in_seconds as f64,
+                ),
+            ));
+        }
+        if let Some(policy) = &self.config.default_policies.max_pull_request_lifespan {
+            policies.push(Box::new(
+                #[allow(clippy::cast_precision_loss)]
+                MaxPullRequestLifespan::new(
+                    self.contribution_retriever(),
+                    policy.max_lifespan_in_seconds as f64,
+                ),
+            ));
         }
         if !policies.is_empty() {
             execution_configs.push(ExecutionConfig::new(policies, None)?);
@@ -150,6 +192,42 @@ impl Factory {
             .clone()
     }
 
+    fn contribution_retriever(&self) -> Arc<dyn ContributionDataRetriever> {
+        self.contribution_retriever
+            .get(|| {
+                let git_contributor_retriever =
+                    repo_contribution::Retriever::new(self.github_client());
+
+                Arc::new(git_contributor_retriever)
+            })
+            .clone()
+    }
+
+    fn github_authentication() -> github::Authentication {
+        let github_username = std::env::var("GITHUB_USERNAME").ok();
+        let github_password = std::env::var("GITHUB_PASSWORD").ok();
+
+        match github_username {
+            None => github::Authentication::None,
+            Some(github_username) => {
+                github::Authentication::Basic(github_username, github_password)
+            }
+        }
+    }
+
+    fn github_client(&self) -> Arc<github::Client> {
+        self.github_client
+            .get(|| {
+                let github_client = github::Client::new(
+                    reqwest::blocking::Client::new(),
+                    Self::github_authentication(),
+                );
+
+                Arc::new(github_client)
+            })
+            .clone()
+    }
+
     pub fn result_reporter() -> Reporter<File> {
         let reader = File::options()
             .create(true)
@@ -173,6 +251,8 @@ impl Factory {
             info_retriever: Lazy::new(),
             http_client: Lazy::new(),
             repository_retriever: Lazy::new(),
+            contribution_retriever: Lazy::new(),
+            github_client: Lazy::new(),
         }
     }
 }
