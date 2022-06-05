@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use serde_json::{Map, Value};
 
-use crate::infra::http;
 use crate::pkg::Repository;
 
 #[derive(Default)]
 pub struct InfoRetriever {
-    client: Arc<http::Client>,
+    client: Arc<reqwest::blocking::Client>,
 }
 
 impl InfoRetriever {
     pub fn new<C>(client: C) -> Self
     where
-        C: Into<Arc<http::Client>>,
+        C: Into<Arc<reqwest::blocking::Client>>,
     {
         Self {
             client: client.into(),
@@ -23,8 +23,10 @@ impl InfoRetriever {
     fn make_request(&self, dependency: &str) -> Result<Map<String, Value>, String> {
         let result: Value = self
             .client
-            .get(&format!("https://crates.io/api/v1/crates/{}", dependency))?
-            .json()?;
+            .get(&format!("https://crates.io/api/v1/crates/{}", dependency))
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
+            .send().context("unable to request crates.io").map_err(|e| e.to_string())?
+            .json().context("unable to parse crates.io response").map_err(|e| e.to_string())?;
 
         if !result.is_object() {
             return Err(format!(
