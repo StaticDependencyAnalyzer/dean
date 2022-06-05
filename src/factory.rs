@@ -7,10 +7,10 @@ use std::time::Duration;
 
 use crate::infra::clock::Clock;
 use crate::infra::git::RepositoryRetriever;
+use crate::infra::github;
 use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
 use crate::infra::repo_contribution;
-use crate::infra::{github, http};
 use crate::lazy::Lazy;
 use crate::pkg::config::Config;
 use crate::pkg::csv::Reporter;
@@ -28,7 +28,7 @@ pub struct Factory {
     config: Rc<Config>,
 
     info_retriever: Lazy<Arc<dyn InfoRetriever>>,
-    http_client: Lazy<Arc<http::Client>>,
+    http_client: Lazy<Arc<reqwest::blocking::Client>>,
     repository_retriever: Lazy<Arc<dyn CommitRetriever>>,
     contribution_retriever: Lazy<Arc<dyn ContributionDataRetriever>>,
     github_client: Lazy<Arc<github::Client>>,
@@ -160,7 +160,7 @@ impl Factory {
             .clone()
     }
 
-    fn http_client(&self) -> Arc<http::Client> {
+    fn http_client(&self) -> Arc<reqwest::blocking::Client> {
         self.http_client
             .get(|| {
                 let reqwest_client = reqwest::blocking::Client::builder()
@@ -168,7 +168,7 @@ impl Factory {
                     .build()
                     .expect("unable to create the reqwest client");
 
-                Arc::new(http::Client::new(reqwest_client))
+                Arc::new(reqwest_client)
             })
             .clone()
     }

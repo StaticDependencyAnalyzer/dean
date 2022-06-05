@@ -1,19 +1,19 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use serde_json::Value;
 
-use crate::infra::http;
 use crate::pkg::Repository;
 
 #[derive(Default)]
 pub struct InfoRetriever {
-    client: Arc<http::Client>,
+    client: Arc<reqwest::blocking::Client>,
 }
 
 impl InfoRetriever {
     pub fn new<C>(client: C) -> Self
     where
-        C: Into<Arc<http::Client>>,
+        C: Into<Arc<reqwest::blocking::Client>>,
     {
         Self {
             client: client.into(),
@@ -25,8 +25,10 @@ impl crate::pkg::InfoRetriever for InfoRetriever {
     fn latest_version(&self, package_name: &str) -> Result<String, String> {
         let response: Value = self
             .client
-            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())?
-            .json()?;
+            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
+            .send().context("unable to request npmjs.org").map_err(|e| e.to_string())?
+            .json().context("unable to parse npmjs.org response").map_err(|e| e.to_string())?;
 
         Ok(response["dist-tags"]["latest"]
             .as_str()
@@ -37,8 +39,10 @@ impl crate::pkg::InfoRetriever for InfoRetriever {
     fn repository(&self, package_name: &str) -> Result<Repository, String> {
         let response: Value = self
             .client
-            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())?
-            .json()?;
+            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())
+            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
+            .send().context("unable to request npmjs.org").map_err(|e| e.to_string())?
+            .json().context("unable to parse npmjs.org response").map_err(|e| e.to_string())?;
 
         let possible_repository = response["repository"]["url"]
             .as_str()
