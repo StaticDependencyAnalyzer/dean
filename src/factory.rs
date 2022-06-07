@@ -12,7 +12,7 @@ use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
 use crate::infra::repo_contribution;
 use crate::lazy::Lazy;
-use crate::pkg::config::Config;
+use crate::pkg::config::{Config, Policies};
 use crate::pkg::csv::Reporter;
 use crate::pkg::engine::{ExecutionConfig, PolicyExecutor};
 use crate::pkg::package_manager::{cargo, npm};
@@ -58,55 +58,11 @@ impl Factory {
         }
     }
 
-    fn execution_configs(&self) -> Result<Vec<ExecutionConfig>, Box<dyn Error>> {
-        let mut execution_configs = vec![];
+    fn config_policies_to_vector(&self, config_policies: &Policies) -> Vec<Box<dyn Policy>> {
         let repository_retriever = self.repository_retriever();
+        let mut policies: Vec<Box<dyn Policy>> = Vec::new();
 
-        for dependency_config in &self.config.dependency_config {
-            let mut policies: Vec<Box<dyn Policy>> = vec![];
-
-            if let Some(policy) = &dependency_config.policies.min_number_of_releases_required {
-                policies.push(Box::new(MinNumberOfReleasesRequired::new(
-                    repository_retriever.clone(),
-                    policy.min_number_of_releases,
-                    Duration::from_secs(policy.days * DAYS_TO_SECONDS),
-                    Box::new(Clock::default()),
-                )));
-            }
-            if let Some(policy) = &dependency_config.policies.contributors_ratio {
-                policies.push(Box::new(ContributorsRatio::new(
-                    repository_retriever.clone(),
-                    policy.max_number_of_releases_to_check,
-                    policy.max_contributor_ratio,
-                )));
-            }
-            if let Some(policy) = &dependency_config.policies.max_issue_lifespan {
-                policies.push(Box::new(
-                    #[allow(clippy::cast_precision_loss)]
-                    MaxIssueLifespan::new(
-                        self.contribution_retriever(),
-                        policy.max_lifespan_in_seconds as f64,
-                    ),
-                ));
-            }
-            if let Some(policy) = &dependency_config.policies.max_pull_request_lifespan {
-                policies.push(Box::new(
-                    #[allow(clippy::cast_precision_loss)]
-                    MaxPullRequestLifespan::new(
-                        self.contribution_retriever(),
-                        policy.max_lifespan_in_seconds as f64,
-                    ),
-                ));
-            }
-
-            execution_configs.push(ExecutionConfig::new(
-                policies,
-                Some(&dependency_config.name),
-            )?);
-        }
-
-        let mut policies: Vec<Box<dyn Policy>> = vec![];
-        if let Some(policy) = &self.config.default_policies.min_number_of_releases_required {
+        if let Some(policy) = &config_policies.min_number_of_releases_required {
             policies.push(Box::new(MinNumberOfReleasesRequired::new(
                 repository_retriever.clone(),
                 policy.min_number_of_releases,
@@ -114,14 +70,14 @@ impl Factory {
                 Box::new(Clock::default()),
             )));
         }
-        if let Some(policy) = &self.config.default_policies.contributors_ratio {
+        if let Some(policy) = &config_policies.contributors_ratio {
             policies.push(Box::new(ContributorsRatio::new(
                 repository_retriever.clone(),
                 policy.max_number_of_releases_to_check,
                 policy.max_contributor_ratio,
             )));
         }
-        if let Some(policy) = &self.config.default_policies.max_issue_lifespan {
+        if let Some(policy) = &config_policies.max_issue_lifespan {
             policies.push(Box::new(
                 #[allow(clippy::cast_precision_loss)]
                 MaxIssueLifespan::new(
@@ -130,7 +86,7 @@ impl Factory {
                 ),
             ));
         }
-        if let Some(policy) = &self.config.default_policies.max_pull_request_lifespan {
+        if let Some(policy) = &config_policies.max_pull_request_lifespan {
             policies.push(Box::new(
                 #[allow(clippy::cast_precision_loss)]
                 MaxPullRequestLifespan::new(
@@ -139,6 +95,21 @@ impl Factory {
                 ),
             ));
         }
+
+        policies
+    }
+
+    fn execution_configs(&self) -> Result<Vec<ExecutionConfig>, Box<dyn Error>> {
+        let mut execution_configs = vec![];
+
+        for dependency_config in &self.config.dependency_config {
+            execution_configs.push(ExecutionConfig::new(
+                self.config_policies_to_vector(&dependency_config.policies),
+                Some(&dependency_config.name),
+            )?);
+        }
+
+        let policies = self.config_policies_to_vector(&self.config.default_policies);
         if !policies.is_empty() {
             execution_configs.push(ExecutionConfig::new(policies, None)?);
         }
