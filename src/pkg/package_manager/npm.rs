@@ -18,7 +18,7 @@ where
     T: std::io::Read + Send,
 {
     type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
-    fn dependencies(&self) -> Result<Box<dyn Iterator<Item = Dependency> + Send>, String> {
+    fn dependencies(&self) -> Result<Self::Itr, String> {
         let result: Value = serde_json::from_reader(&mut *self.reader.lock().unwrap())
             .map_err(|e| e.to_string())?;
 

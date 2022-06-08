@@ -15,7 +15,7 @@ use crate::lazy::Lazy;
 use crate::pkg::config::{Config, Policies};
 use crate::pkg::csv::Reporter;
 use crate::pkg::engine::{ExecutionConfig, PolicyExecutor};
-use crate::pkg::package_manager::{cargo, npm};
+use crate::pkg::package_manager::{cargo, npm, yarn};
 use crate::pkg::policy::{
     CommitRetriever, ContributionDataRetriever, ContributorsRatio, MaxIssueLifespan,
     MaxPullRequestLifespan, MinNumberOfReleasesRequired, Policy,
@@ -52,6 +52,11 @@ impl Factory {
             ),
             PackageManager::Cargo => Box::new(
                 cargo::DependencyReader::new(reader, retriever)
+                    .dependencies()
+                    .unwrap(),
+            ),
+            PackageManager::Yarn => Box::new(
+                yarn::DependencyReader::new(reader, retriever)
                     .dependencies()
                     .unwrap(),
             ),
@@ -124,7 +129,9 @@ impl Factory {
                 let http_client = self.http_client();
 
                 match Self::package_manager(lock_file) {
-                    PackageManager::Npm => Arc::new(NpmInfoRetriever::new(http_client)),
+                    PackageManager::Npm | PackageManager::Yarn => {
+                        Arc::new(NpmInfoRetriever::new(http_client))
+                    }
                     PackageManager::Cargo => Arc::new(CargoInfoRetriever::new(http_client)),
                 }
             })
