@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use itertools::Itertools;
+use log::info;
 
 use crate::pkg::{DependencyRetriever, InfoRetriever, Repository};
 use crate::Dependency;
@@ -35,74 +36,79 @@ where
     type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
 
     fn dependencies(&self) -> Result<Self::Itr, String> {
-        let lines = {
+        let content = {
             let mut bytes = Vec::new();
             self.reader
                 .lock()
                 .unwrap()
                 .read_to_end(&mut bytes)
                 .map_err(|e| e.to_string())?;
-            let str = String::from_utf8_lossy(&bytes).into_owned();
-            str.lines()
-                .map(std::string::ToString::to_string)
-                .collect::<Vec<_>>()
+            String::from_utf8_lossy(&bytes).into_owned()
         };
 
-        let not_comment_lines = lines.iter().filter(|line| !line.trim().starts_with('#'));
+        let not_comment_lines = content.lines().filter(|line| !line.trim().starts_with('#'));
 
-        let dependency_lines_grouped = {
-            let dependencies_grouped = not_comment_lines.group_by(|line| line.trim().is_empty());
-            let dependency_groups = dependencies_grouped
+        let dependency_lines_grouped = not_comment_lines.group_by(|line| line.trim().is_empty());
+        let dependency_lines_grouped =
+            dependency_lines_grouped
                 .into_iter()
                 .filter_map(|(bool, group)| {
                     if bool {
                         None
                     } else {
-                        let x: Vec<&String> = group.collect();
-                        Some(x)
+                        Some(group.collect_vec())
                     }
                 });
 
-            dependency_groups.collect::<Vec<_>>()
-        };
+        let dependency_info_tuples = dependency_lines_grouped
+            .into_iter()
+            .map(|lines| {
+                let dependency_line: String = lines.get(0).unwrap().replace('\"', "");
+                let mut dependency_name = dependency_line.split_once('@').unwrap().0.to_owned();
+                if dependency_name.is_empty() {
+                    dependency_name = format!(
+                        "@{}",
+                        dependency_line
+                            .replacen('@', "", 1)
+                            .split_once('@')
+                            .unwrap()
+                            .0
+                    );
+                }
 
-        let dependencies = dependency_lines_grouped.into_iter().map(|lines| {
-            let dependency_line: String = lines.get(0).unwrap().replace('\"', "");
-            let mut dependency_name = dependency_line.split_once('@').unwrap().0.to_owned();
-            if dependency_name.is_empty() {
-                dependency_name = format!(
-                    "@{}",
-                    dependency_line
-                        .replacen('@', "", 1)
-                        .split_once('@')
-                        .unwrap()
-                        .0
-                );
-            }
+                let dependency_version = lines.get(1).unwrap();
+                let dependency_version: String = dependency_version
+                    .trim()
+                    .split_once(' ')
+                    .unwrap()
+                    .1
+                    .replace('\"', "");
 
-            let dependency_version = lines.get(1).unwrap();
-            let dependency_version = dependency_version
-                .trim()
-                .split_once(' ')
-                .unwrap()
-                .1
-                .replace('\"', "");
+                (dependency_name, dependency_version)
+            })
+            .collect_vec();
 
-            Dependency {
-                latest_version: self
-                    .npm_info_retriever
-                    .latest_version(&dependency_name)
-                    .ok(),
-                repository: self
-                    .npm_info_retriever
-                    .repository(&dependency_name)
-                    .unwrap_or(Repository::Unknown),
-                name: dependency_name,
-                version: dependency_version,
-            }
-        });
+        let npm_info_retriever = self.npm_info_retriever.clone();
+        let dependencies =
+            dependency_info_tuples
+                .into_iter()
+                .map(move |(dependency_name, dependency_version)| {
+                    info!(
+                        target: "dean::yarn-dependency-retriever",
+                        "retrieving information for dependency [name={}, version={}]",
+                        dependency_name, dependency_version
+                    );
+                    Dependency {
+                        latest_version: npm_info_retriever.latest_version(&dependency_name).ok(),
+                        repository: npm_info_retriever
+                            .repository(&dependency_name)
+                            .unwrap_or(Repository::Unknown),
+                        name: dependency_name,
+                        version: dependency_version,
+                    }
+                });
 
-        Ok(Box::new(dependencies.collect::<Vec<_>>().into_iter()))
+        Ok(Box::new(dependencies))
     }
 }
 
