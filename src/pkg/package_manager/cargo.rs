@@ -19,7 +19,7 @@ where
     T: std::io::Read + Send,
 {
     type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
-    fn dependencies(&self) -> Result<Box<dyn Iterator<Item = Dependency> + Send>, String> {
+    fn dependencies(&self) -> Result<Self::Itr, String> {
         let mut contents = Vec::new();
         self.reader
             .lock()

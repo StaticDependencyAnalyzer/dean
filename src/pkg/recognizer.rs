@@ -3,6 +3,7 @@
 pub enum PackageManager {
     Npm,
     Cargo,
+    Yarn,
 }
 
 impl PackageManager {
@@ -11,6 +12,8 @@ impl PackageManager {
             Some(Self::Npm)
         } else if package_file.ends_with("Cargo.lock") {
             Some(Self::Cargo)
+        } else if package_file.ends_with("yarn.lock") {
+            Some(Self::Yarn)
         } else {
             None
         }
@@ -47,6 +50,17 @@ mod tests {
     fn it_recognizes_the_cargo_package_lock_file_even_with_full_path() {
         PackageManager::from_filename("/path/to/Cargo.lock")
             .should(be_some(equal(PackageManager::Cargo)));
+    }
+
+    #[test]
+    fn it_recognizes_the_yarn_package_lock_file() {
+        PackageManager::from_filename("yarn.lock").should(be_some(equal(PackageManager::Yarn)));
+    }
+
+    #[test]
+    fn it_recognizes_the_yarn_package_lock_file_even_with_full_path() {
+        PackageManager::from_filename("/path/to/yarn.lock")
+            .should(be_some(equal(PackageManager::Yarn)));
     }
 
     #[test]
