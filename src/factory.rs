@@ -2,11 +2,12 @@ use std::cell::RefCell;
 use std::error::Error;
 use std::fs::File;
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::infra::clock::Clock;
-use crate::infra::git::RepositoryRetriever;
+use crate::infra::commit_store::SqliteStore;
+use crate::infra::git::{CommitStore, RepositoryRetriever};
 use crate::infra::github;
 use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
@@ -32,6 +33,7 @@ pub struct Factory {
     repository_retriever: Lazy<Arc<dyn CommitRetriever>>,
     contribution_retriever: Lazy<Arc<dyn ContributionDataRetriever>>,
     github_client: Lazy<Arc<github::Client>>,
+    commit_store: Lazy<Arc<dyn CommitStore>>,
 }
 
 const DAYS_TO_SECONDS: u64 = 86400;
@@ -163,7 +165,7 @@ impl Factory {
     fn repository_retriever(&self) -> Arc<dyn CommitRetriever> {
         self.repository_retriever
             .get(|| {
-                let git_repository_retriever = RepositoryRetriever::new();
+                let git_repository_retriever = RepositoryRetriever::new(self.commit_store());
 
                 Arc::new(git_repository_retriever)
             })
@@ -219,6 +221,19 @@ impl Factory {
     pub fn engine(&mut self) -> Result<PolicyExecutor, Box<dyn Error>> {
         Ok(PolicyExecutor::new(self.execution_configs()?))
     }
+
+    fn commit_store(&self) -> Arc<dyn CommitStore> {
+        self.commit_store
+            .get(|| {
+                let connection =
+                    rusqlite::Connection::open("dean.db3").expect("unable to open dean.db");
+                let commit_store = SqliteStore::new(Mutex::new(connection));
+                commit_store.init().expect("unable to init commit store");
+
+                Arc::new(commit_store)
+            })
+            .clone()
+    }
 }
 
 impl Factory {
@@ -231,6 +246,7 @@ impl Factory {
             repository_retriever: Lazy::new(),
             contribution_retriever: Lazy::new(),
             github_client: Lazy::new(),
+            commit_store: Lazy::new(),
         }
     }
 }
