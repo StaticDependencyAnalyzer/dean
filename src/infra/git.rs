@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::error::Error;
+use std::sync::Arc;
 
 use anyhow::Context;
 use concurrent_lru::sharded::LruCache;
@@ -14,8 +15,25 @@ struct RepositoryResult {
     all_tags: Vec<Tag>,
 }
 
+#[cfg_attr(test, mockall::automock)]
+pub trait CommitStore: Send + Sync {
+    fn get_commits_for_each_tag(
+        &self,
+        repository_url: &str,
+    ) -> Option<HashMap<String, Vec<Commit>>>;
+    fn save_commits_for_each_tag(
+        &self,
+        repository_url: &str,
+        commits_for_each_tag: &HashMap<String, Vec<Commit>>,
+    ) -> Result<(), Box<dyn Error>>;
+
+    fn get_all_tags(&self, repository_url: &str) -> Option<Vec<Tag>>;
+    fn save_all_tags(&self, repository_url: &str, all_tags: &[Tag]) -> Result<(), Box<dyn Error>>;
+}
+
 pub struct RepositoryRetriever {
     cache: LruCache<String, RepositoryResult>,
+    commit_store: Arc<dyn CommitStore>,
 }
 
 impl CommitRetriever for RepositoryRetriever {
@@ -25,7 +43,7 @@ impl CommitRetriever for RepositoryRetriever {
     ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
         self.cache
             .get_or_try_init(repository_url.to_string(), 1, |url| {
-                Self::repository_result_from_url(url)
+                self.repository_result_from_url(url)
             })
             .map_err(|e: Box<dyn Error>| e)
             .map(|handle| handle.value().commits_for_each_tag.clone())
@@ -34,7 +52,7 @@ impl CommitRetriever for RepositoryRetriever {
     fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
         self.cache
             .get_or_try_init(repository_url.to_string(), 1, |url| {
-                Self::repository_result_from_url(url)
+                self.repository_result_from_url(url)
             })
             .map_err(|e: Box<dyn Error>| e)
             .map(|handle| handle.value().all_tags.clone())
@@ -42,22 +60,52 @@ impl CommitRetriever for RepositoryRetriever {
 }
 
 impl RepositoryRetriever {
-    pub fn new() -> Self {
+    pub fn new<T: Into<Arc<dyn CommitStore>>>(commit_store: T) -> Self {
         let cache = LruCache::new(1000);
-        RepositoryRetriever { cache }
+        Self {
+            cache,
+            commit_store: commit_store.into(),
+        }
     }
 
     fn repository_result_from_url(
+        &self,
         repository_url: &str,
     ) -> Result<RepositoryResult, Box<dyn Error>> {
+        let commits_for_each_tag = self.commit_store.get_commits_for_each_tag(repository_url);
+        let all_tags = self.commit_store.get_all_tags(repository_url);
+
+        if let Some(commits) = &commits_for_each_tag {
+            if let Some(tags) = &all_tags {
+                return Ok(RepositoryResult {
+                    commits_for_each_tag: commits.clone(),
+                    all_tags: tags.clone(),
+                });
+            }
+        }
+
         let repository = Repository::new(repository_url)
             .map_err(|e| format!("unable to create repository: {}", e))?;
-        let commits_for_each_tag = repository.commits_for_each_tag()?;
-        let all_tags = repository.all_tags()?;
+        let commits_for_each_tag_in_repository = repository.commits_for_each_tag()?;
+        let all_tags_in_repository = repository.all_tags()?;
+
+        if commits_for_each_tag.is_none() {
+            let commits_for_each_tag = commits_for_each_tag_in_repository.clone();
+            self.commit_store
+                .save_commits_for_each_tag(repository_url, &commits_for_each_tag)
+                .map_err(|e| format!("unable to save commits for each tag: {}", e))?;
+        }
+
+        if all_tags.is_none() {
+            let all_tags = all_tags_in_repository.clone();
+            self.commit_store
+                .save_all_tags(repository_url, &all_tags)
+                .map_err(|e| format!("unable to save all tags: {}", e))?;
+        }
 
         Ok(RepositoryResult {
-            commits_for_each_tag,
-            all_tags,
+            commits_for_each_tag: commits_for_each_tag_in_repository,
+            all_tags: all_tags_in_repository,
         })
     }
 }
@@ -243,7 +291,9 @@ mod tests {
 
     #[test]
     fn it_retrieves_the_contents_of_the_repositories_and_stores_them_in_a_cache() {
-        let repository_retriever = RepositoryRetriever::new();
+        let commit_store: Box<dyn CommitStore> = mock_commit_store();
+
+        let repository_retriever = RepositoryRetriever::new(commit_store);
         let repository_url = "https://github.com/libgit2/libgit2";
 
         repository_retriever
@@ -285,11 +335,30 @@ mod tests {
 
     #[test]
     fn it_retrieves_the_tags_for_yocto_queue() {
-        let repository_retriever = RepositoryRetriever::new();
+        let commit_store: Box<dyn CommitStore> = mock_commit_store();
+        let repository_retriever = RepositoryRetriever::new(commit_store);
         let tags = repository_retriever
             .all_tags("https://github.com/sindresorhus/yocto-queue")
             .unwrap();
 
         assert!(tags.len() >= 2_usize);
+    }
+
+    fn mock_commit_store() -> Box<MockCommitStore> {
+        let mut commit_store = Box::new(MockCommitStore::new());
+        commit_store
+            .expect_get_commits_for_each_tag()
+            .return_const(None);
+        commit_store.expect_get_all_tags().return_const(None);
+        commit_store
+            .expect_save_commits_for_each_tag()
+            .once()
+            .return_once(|_, _| Ok(()));
+        commit_store
+            .expect_save_all_tags()
+            .once()
+            .return_once(|_, _| Ok(()));
+
+        commit_store
     }
 }
