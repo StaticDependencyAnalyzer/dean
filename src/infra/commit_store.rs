@@ -73,7 +73,7 @@ impl CommitStore for Sqlite {
 
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO commitstore_commits_for_each_tag (repository, tag, commit_id, commit_author_email, commit_author_name, commit_creation_timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO commitstore_commits_for_each_tag (repository, tag, commit_id, commit_author_email, commit_author_name, commit_creation_timestamp) VALUES (?, ?, ?, ?, ?, ?)",
             )?;
 
             for (tag_name, commits) in commits_for_each_tag {
@@ -134,7 +134,7 @@ impl CommitStore for Sqlite {
 
         {
             let mut stmt = tx
-                .prepare("INSERT INTO commitstore_tags (repository, name, commit_id, commit_timestamp) VALUES (?, ?, ?, ?)")?;
+                .prepare("INSERT OR IGNORE INTO commitstore_tags (repository, name, commit_id, commit_timestamp) VALUES (?, ?, ?, ?)")?;
 
             for tag in all_tags {
                 stmt.execute(&[

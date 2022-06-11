@@ -81,7 +81,7 @@ impl IssueStore for Sqlite {
         let tx = conn.transaction()?;
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO issuestore_issue (provider, organization, repo, issue_body) VALUES (?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO issuestore_issue (provider, organization, repo, issue_body) VALUES (?, ?, ?, ?)",
             ).unwrap();
             for issue in issues {
                 stmt.execute(&[
@@ -138,7 +138,7 @@ impl IssueStore for Sqlite {
         let tx = conn.transaction()?;
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO issuestore_pullrequest (provider, organization, repo, pullrequest_body) VALUES (?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO issuestore_pullrequest (provider, organization, repo, pullrequest_body) VALUES (?, ?, ?, ?)",
             ).unwrap();
             for pr in pull_requests {
                 stmt.execute(&[
