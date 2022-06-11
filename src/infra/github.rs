@@ -45,6 +45,12 @@ impl IssuePullRequestIterator {
 
         let response = request.send().context("Failed to get issues")?;
 
+        if response.status().as_u16() == 403 {
+            warn!("Github API rate limit exceeded, retrying in 5 minutes");
+            std::thread::sleep(std::time::Duration::from_secs(5 * 60));
+            return self.update_buffer();
+        }
+
         if let Some(link) = response.headers().get("link") {
             let link = link.to_str().unwrap_or("");
             let link = link
@@ -57,12 +63,6 @@ impl IssuePullRequestIterator {
                 self.next_page = Some(link.to_string());
             }
         };
-
-        if response.status().as_u16() == 403 {
-            warn!("Github API rate limit exceeded, retrying in 5 minutes");
-            std::thread::sleep(std::time::Duration::from_secs(5 * 60));
-            return self.update_buffer();
-        }
 
         let response_json = response.json::<Value>().context("Failed to parse issues")?;
 
