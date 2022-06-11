@@ -1,9 +1,10 @@
-use std::iter::Filter;
 use std::sync::Arc;
 
 use anyhow::Context;
 use log::{debug, error};
 use serde_json::Value;
+
+use crate::infra::cached_issue_client::IssueClient;
 
 #[derive(Clone)]
 pub enum Authentication {
@@ -16,7 +17,6 @@ pub struct Client {
     auth: Authentication,
 }
 
-#[derive(Clone)]
 pub struct IssuePullRequestIterator {
     client: Arc<reqwest::blocking::Client>,
     next_page: Option<String>,
@@ -93,19 +93,34 @@ impl Iterator for IssuePullRequestIterator {
     }
 }
 
+impl IssueClient for Client {
+    fn get_issues(&self, organization: &str, repo: &str) -> Box<dyn Iterator<Item = Value>> {
+        let iter = self
+            .all_issues_iterator(organization, repo)
+            .filter(|issue| issue.get("pull_request").is_none());
+        Box::new(iter)
+    }
+
+    fn get_pull_requests(&self, organization: &str, repo: &str) -> Box<dyn Iterator<Item = Value>> {
+        let iter = self
+            .all_issues_iterator(organization, repo)
+            .filter(|issue| issue.get("pull_request").is_some());
+        Box::new(iter)
+    }
+}
+
 impl Client {
-    pub fn new<C: Into<Arc<reqwest::blocking::Client>>>(client: C, auth: Authentication) -> Self {
+    pub fn new<C>(client: C, auth: Authentication) -> Self
+    where
+        C: Into<Arc<reqwest::blocking::Client>>,
+    {
         Self {
             client: client.into(),
             auth,
         }
     }
 
-    pub fn get_issues(
-        &self,
-        organization: &str,
-        repo: &str,
-    ) -> Filter<IssuePullRequestIterator, fn(&Value) -> bool> {
+    fn all_issues_iterator(&self, organization: &str, repo: &str) -> IssuePullRequestIterator {
         IssuePullRequestIterator {
             client: self.client.clone(),
             next_page: Some(format!(
@@ -115,24 +130,6 @@ impl Client {
             buffer: vec![],
             auth: self.auth.clone(),
         }
-        .filter(|issue| issue.get("pull_request").is_none())
-    }
-
-    pub fn get_pull_requests(
-        &self,
-        organization: &str,
-        repo: &str,
-    ) -> Filter<IssuePullRequestIterator, fn(&Value) -> bool> {
-        IssuePullRequestIterator {
-            client: self.client.clone(),
-            next_page: Some(format!(
-                "https://api.github.com/repos/{}/{}/issues?state=all&per_page=100&page=1",
-                organization, repo
-            )),
-            buffer: vec![],
-            auth: self.auth.clone(),
-        }
-        .filter(|issue| issue.get("pull_request").is_some())
     }
 }
 
@@ -162,9 +159,10 @@ mod tests {
     fn it_retrieves_150_issues_from_rust_lang() {
         let client = Client::new(reqwest::blocking::Client::new(), authentication());
 
-        let mut issues = client.get_issues("rust-lang", "rust");
+        let issues = client.get_issues("rust-lang", "rust");
+        assert_eq!(issues.take(150).count(), 150);
 
-        assert_eq!(issues.clone().take(150).count(), 150);
+        let mut issues = client.get_issues("rust-lang", "rust");
         assert_eq!(
             issues
                 .next()

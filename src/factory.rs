@@ -5,13 +5,14 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use crate::infra::cached_issue_client::IssueStore;
 use crate::infra::clock::Clock;
-use crate::infra::commit_store::SqliteStore;
 use crate::infra::git::{CommitStore, RepositoryRetriever};
 use crate::infra::github;
 use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
 use crate::infra::repo_contribution;
+use crate::infra::{commit_store, issue_store};
 use crate::lazy::Lazy;
 use crate::pkg::config::{Config, Policies};
 use crate::pkg::csv::Reporter;
@@ -34,6 +35,7 @@ pub struct Factory {
     contribution_retriever: Lazy<Arc<dyn ContributionDataRetriever>>,
     github_client: Lazy<Arc<github::Client>>,
     commit_store: Lazy<Arc<dyn CommitStore>>,
+    issue_store: Lazy<Arc<dyn IssueStore>>,
 }
 
 const DAYS_TO_SECONDS: u64 = 86400;
@@ -176,7 +178,7 @@ impl Factory {
         self.contribution_retriever
             .get(|| {
                 let git_contributor_retriever =
-                    repo_contribution::Retriever::new(self.github_client());
+                    repo_contribution::Retriever::new(self.github_client(), self.issue_store());
 
                 Arc::new(git_contributor_retriever)
             })
@@ -226,11 +228,24 @@ impl Factory {
         self.commit_store
             .get(|| {
                 let connection =
-                    rusqlite::Connection::open("dean.db3").expect("unable to open dean.db");
-                let commit_store = SqliteStore::new(Mutex::new(connection));
+                    rusqlite::Connection::open("dean.db3").expect("unable to open dean.db3");
+                let commit_store = commit_store::Sqlite::new(Mutex::new(connection));
                 commit_store.init().expect("unable to init commit store");
 
                 Arc::new(commit_store)
+            })
+            .clone()
+    }
+
+    fn issue_store(&self) -> Arc<dyn IssueStore> {
+        self.issue_store
+            .get(|| {
+                let connection =
+                    rusqlite::Connection::open("dean.db3").expect("unable to open dean.db3");
+                let issue_store = issue_store::Sqlite::new(Mutex::new(connection));
+                issue_store.init().expect("unable to init issue store");
+
+                Arc::new(issue_store)
             })
             .clone()
     }
@@ -247,6 +262,7 @@ impl Factory {
             contribution_retriever: Lazy::new(),
             github_client: Lazy::new(),
             commit_store: Lazy::new(),
+            issue_store: Lazy::new(),
         }
     }
 }
