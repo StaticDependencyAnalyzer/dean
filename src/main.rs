@@ -11,7 +11,7 @@ use std::error::Error;
 use std::fs::File;
 use std::rc::Rc;
 
-use log::{info, warn, LevelFilter};
+use log::{error, info, warn, LevelFilter};
 use rayon::prelude::*;
 
 use crate::cmd::{parse_args, Commands, ConfigCommands};
@@ -50,29 +50,33 @@ fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box
     let engine = factory.engine()?;
 
     let results = dependency_reader.par_bridge().map(move |dep| {
-        let evaluation = engine.evaluate(&dep);
-        if let Err(err) = evaluation {
-            return Evaluation::Fail(dep, err.to_string());
+        let evaluations = engine.evaluate(&dep);
+        if let Err(err) = evaluations {
+            error!("error evaluating dependency {}: {}", dep.name, err);
+            return None;
         }
 
-        match evaluation.as_ref().unwrap() {
-            Evaluation::Pass(dep) => {
-                info!(
-                        "dependency [name={}, version={}, latest version={}, repository={}] is okay",
-                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository
+        for evaluation in evaluations.as_ref().unwrap() {
+            match evaluation {
+                Evaluation::Pass(policy, dep) => {
+                    info!(
+                        "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is okay",
+                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy
                     );
-            }
-            Evaluation::Fail(dep, reason) => {
-                warn!(
-                        "dependency [name={}, version={}, latest version={}, repository={}] is not okay: {}",
-                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, reason
+                }
+                Evaluation::Fail(policy, dep, reason) => {
+                    warn!(
+                        "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is not okay: {}",
+                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy, reason,
                     );
+                }
             }
         }
-        evaluation.unwrap()
+
+        Some(evaluations.unwrap())
     });
 
-    let sequential_results = results.to_seq(1000);
+    let sequential_results = results.to_seq(1000).flatten().flatten();
     reporter.report_results(sequential_results)?;
 
     Ok(())

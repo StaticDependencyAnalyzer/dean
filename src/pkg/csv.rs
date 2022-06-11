@@ -38,24 +38,27 @@ where
                 "version",
                 "latest_version",
                 "repository",
+                "policy",
                 "evaluation",
             ])
             .map_err(|e| format!("unable to write record: {}", e))?;
 
         for evaluation in result {
             let record = match evaluation {
-                Evaluation::Pass(dep) => [
+                Evaluation::Pass(policy, dep) => [
                     dep.name,
                     dep.version,
                     dep.latest_version.unwrap_or_else(|| "unknown".to_string()),
                     dep.repository.to_string(),
+                    policy.to_string(),
                     "OK".to_string(),
                 ],
-                Evaluation::Fail(dep, reason) => [
+                Evaluation::Fail(policy, dep, reason) => [
                     dep.name,
                     dep.version,
                     dep.latest_version.unwrap_or_else(|| "unknown".to_string()),
                     dep.repository.to_string(),
+                    policy.to_string(),
                     reason,
                 ],
             };
@@ -85,16 +88,20 @@ mod tests {
         let mut reporter = Reporter::new(buffer.clone());
 
         let evaluations = vec![
-            Evaluation::Pass(Dependency {
-                name: "some_dep1".to_string(),
-                version: "1.2.3".to_string(),
-                latest_version: Some("1.2.3".to_string()),
-                repository: GitHub {
-                    organization: "some_org".to_string(),
-                    name: "some_repo".to_string(),
+            Evaluation::Pass(
+                "policy1".to_string(),
+                Dependency {
+                    name: "some_dep1".to_string(),
+                    version: "1.2.3".to_string(),
+                    latest_version: Some("1.2.3".to_string()),
+                    repository: GitHub {
+                        organization: "some_org".to_string(),
+                        name: "some_repo".to_string(),
+                    },
                 },
-            }),
+            ),
             Evaluation::Fail(
+                "policy1".to_string(),
                 Dependency {
                     name: "some_dep2".to_string(),
                     version: "2.3.4".to_string(),
@@ -112,9 +119,9 @@ mod tests {
 
         assert_eq!(
             String::from_utf8_lossy(buffer.borrow().get_ref()),
-            r#"name,version,latest_version,repository,evaluation
-some_dep1,1.2.3,1.2.3,https://github.com/some_org/some_repo,OK
-some_dep2,2.3.4,2.4.5,https://github.com/some_org/some_repo,failed because a reason
+            r#"name,version,latest_version,repository,policy,evaluation
+some_dep1,1.2.3,1.2.3,https://github.com/some_org/some_repo,policy1,OK
+some_dep2,2.3.4,2.4.5,https://github.com/some_org/some_repo,policy1,failed because a reason
 "#
         );
     }
