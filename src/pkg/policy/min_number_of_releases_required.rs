@@ -32,9 +32,13 @@ impl Policy for MinNumberOfReleasesRequired {
             .count();
 
         if num_tags_in_range == self.number_of_releases {
-            Ok(Evaluation::Pass(dependency.clone()))
+            Ok(Evaluation::Pass(
+                "min_number_of_releases_required".to_string(),
+                dependency.clone(),
+            ))
         } else {
             Ok(Evaluation::Fail(
+                "min_number_of_releases_required".to_string(),
                 dependency.clone(),
                 format!(
                     "expected {} releases in the last {} days, but found {}",
@@ -129,7 +133,10 @@ mod tests {
         let result: Result<Evaluation, Box<dyn Error>> =
             number_of_releases_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Pass(dependency))));
+        result.should(be_ok(equal(Evaluation::Pass(
+            "min_number_of_releases_required".to_string(),
+            dependency,
+        ))));
     }
 
     #[test]
@@ -169,6 +176,7 @@ mod tests {
             number_of_releases_policy.evaluate(&dependency);
 
         result.should(be_ok(equal(Evaluation::Fail(
+            "min_number_of_releases_required".to_string(),
             dependency,
             "expected 2 releases in the last 1260 days, but found 1".to_string(),
         ))));
@@ -224,6 +232,7 @@ mod tests {
             number_of_releases_policy.evaluate(&dependency);
 
         result.should(be_ok(equal(Evaluation::Fail(
+            "min_number_of_releases_required".to_string(),
             dependency,
             "expected 2 releases in the last 1260 days, but found 0".to_string(),
         ))));

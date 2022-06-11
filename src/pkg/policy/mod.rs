@@ -56,17 +56,17 @@ pub trait Clock: Sync + Send {
 
 #[derive(Clone, Debug)]
 pub enum Evaluation {
-    Pass(Dependency),
-    Fail(Dependency, String),
+    Pass(String, Dependency),
+    Fail(String, Dependency, String),
 }
 
 impl PartialEq for Evaluation {
     fn eq(&self, other: &Self) -> bool {
-        matches!(
-            (self, other),
-            (Evaluation::Pass(_), Evaluation::Pass(_))
-                | (Evaluation::Fail(_, _), Evaluation::Fail(_, _))
-        )
+        match (self, other) {
+            (Evaluation::Fail(policy, _, _), Evaluation::Fail(policy2, _, _))
+            | (Evaluation::Pass(policy, _), Evaluation::Pass(policy2, _)) => policy == policy2,
+            _ => false,
+        }
     }
 }
 

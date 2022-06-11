@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use log::{debug, error};
+use log::{debug, error, warn};
 use serde_json::Value;
 
 use crate::infra::cached_issue_client::IssueClient;
@@ -59,7 +59,9 @@ impl IssuePullRequestIterator {
         };
 
         if response.status().as_u16() == 403 {
-            return Err("Github API rate limit exceeded, please insert Github credentials for increased rate limit".into());
+            warn!("Github API rate limit exceeded, retrying in 5 minutes");
+            std::thread::sleep(std::time::Duration::from_secs(5 * 60));
+            return self.update_buffer();
         }
 
         let response_json = response.json::<Value>().context("Failed to parse issues")?;

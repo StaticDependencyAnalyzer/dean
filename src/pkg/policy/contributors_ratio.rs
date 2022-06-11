@@ -64,6 +64,7 @@ impl Policy for ContributorsRatio {
         for (rate, author) in authors_with_rate {
             if rate > self.max_contributor_ratio {
                 return Ok(Evaluation::Fail(
+                    "contributors_ratio".to_string(),
                     dependency.clone(),
                     format!(
                         "the rate of contribution is too high ({} > {}) for author {}",
@@ -72,7 +73,10 @@ impl Policy for ContributorsRatio {
                 ));
             }
         }
-        Ok(Evaluation::Pass(dependency.clone()))
+        Ok(Evaluation::Pass(
+            "contributors_ratio".to_string(),
+            dependency.clone(),
+        ))
     }
 }
 
@@ -164,7 +168,10 @@ mod tests {
         };
         let result = contributors_ratio_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Pass(dependency))));
+        result.should(be_ok(equal(Evaluation::Pass(
+            "contributors_ratio".to_string(),
+            dependency,
+        ))));
     }
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_higher_than_90_percent_it_should_fail() {
@@ -222,6 +229,7 @@ mod tests {
         let result = contributors_ratio_policy.evaluate(&dependency);
 
         result.should(be_ok(equal(Evaluation::Fail(
+            "contributors_ratio".to_string(),
             dependency,
             "the rate of contribution is too high (1 > 0.9) for author SomeAuthor".to_owned(),
         ))));
