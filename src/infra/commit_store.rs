@@ -5,11 +5,11 @@ use std::sync::{Arc, Mutex};
 use crate::infra::git::CommitStore;
 use crate::pkg::policy::{Commit, Tag};
 
-pub struct SqliteStore {
+pub struct Sqlite {
     db: Arc<Mutex<rusqlite::Connection>>,
 }
 
-impl CommitStore for SqliteStore {
+impl CommitStore for Sqlite {
     fn get_commits_for_each_tag(
         &self,
         repository_url: &str,
@@ -73,7 +73,7 @@ impl CommitStore for SqliteStore {
 
         {
             let mut stmt = tx.prepare(
-                "INSERT INTO commitstore_commits_for_each_tag (repository, tag, commit_id, commit_author_email, commit_author_name, commit_creation_timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT OR IGNORE INTO commitstore_commits_for_each_tag (repository, tag, commit_id, commit_author_email, commit_author_name, commit_creation_timestamp) VALUES (?, ?, ?, ?, ?, ?)",
             )?;
 
             for (tag_name, commits) in commits_for_each_tag {
@@ -134,7 +134,7 @@ impl CommitStore for SqliteStore {
 
         {
             let mut stmt = tx
-                .prepare("INSERT INTO commitstore_tags (repository, name, commit_id, commit_timestamp) VALUES (?, ?, ?, ?)")?;
+                .prepare("INSERT OR IGNORE INTO commitstore_tags (repository, name, commit_id, commit_timestamp) VALUES (?, ?, ?, ?)")?;
 
             for tag in all_tags {
                 stmt.execute(&[
@@ -152,7 +152,7 @@ impl CommitStore for SqliteStore {
     }
 }
 
-impl SqliteStore {
+impl Sqlite {
     pub fn new<T: Into<Arc<Mutex<rusqlite::Connection>>>>(db: T) -> Self {
         Self { db: db.into() }
     }
@@ -233,9 +233,9 @@ mod tests {
         assert_eq!(commits_for_each_tag, None);
     }
 
-    fn commit_store() -> SqliteStore {
+    fn commit_store() -> Sqlite {
         let in_memory_connection = Mutex::new(rusqlite::Connection::open_in_memory().unwrap());
-        let commit_store = SqliteStore::new(in_memory_connection);
+        let commit_store = Sqlite::new(in_memory_connection);
         commit_store.init().unwrap();
         commit_store
     }

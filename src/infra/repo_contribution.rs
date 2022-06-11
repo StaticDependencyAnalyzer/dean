@@ -1,26 +1,33 @@
 use std::error::Error;
 use std::sync::Arc;
 
+use crate::infra::cached_issue_client::{CachedClient, IssueClient, IssueStore};
 use crate::infra::github;
 use crate::pkg::policy::ContributionDataRetriever;
 use crate::pkg::Repository;
 
 pub struct Retriever {
-    github_client: Arc<github::Client>,
+    github_cached_client: Box<CachedClient>,
 }
 
 impl Retriever {
-    pub fn new<C>(github_client: C) -> Self
+    pub fn new<C, S>(github_client: C, issue_store: S) -> Self
     where
         C: Into<Arc<github::Client>>,
+        S: Into<Arc<dyn IssueStore>>,
     {
+        let client = CachedClient::new(
+            "github",
+            github_client.into() as Arc<dyn IssueClient>,
+            issue_store.into(),
+        );
         Self {
-            github_client: github_client.into(),
+            github_cached_client: Box::new(client),
         }
     }
 
     fn get_github_issue_lifespan(&self, organization: &str, repo: &str) -> f64 {
-        let issues = self.github_client.get_issues(organization, repo);
+        let issues = self.github_cached_client.get_issues(organization, repo);
 
         let closed_issues =
             issues.filter(|issue| issue.get("state").unwrap().as_str().unwrap() == "closed");
@@ -40,7 +47,9 @@ impl Retriever {
     }
 
     fn get_github_pull_request_lifespan(&self, organization: &str, repo: &str) -> f64 {
-        let prs = self.github_client.get_pull_requests(organization, repo);
+        let prs = self
+            .github_cached_client
+            .get_pull_requests(organization, repo);
 
         let closed_prs = prs.filter(|pr| pr.get("state").unwrap().as_str().unwrap() == "closed");
 
@@ -100,6 +109,7 @@ impl ContributionDataRetriever for Retriever {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::infra::cached_issue_client::MockIssueStore;
     use crate::infra::github::Authentication;
     use crate::pkg::Repository;
 
@@ -107,7 +117,8 @@ mod tests {
     fn it_retrieves_the_issue_lifespan_of_dean() {
         let http_client = reqwest::blocking::Client::default();
         let github_client = github::Client::new(http_client, authentication());
-        let retriever = Retriever::new(github_client);
+        let issue_store = mock_issue_store();
+        let retriever = Retriever::new(github_client, issue_store);
 
         let issue_lifespan: f64 = retriever
             .get_issue_lifespan(&Repository::GitHub {
@@ -126,7 +137,8 @@ mod tests {
     fn it_retrieves_the_pull_request_lifespan_of_dean() {
         let http_client = reqwest::blocking::Client::default();
         let github_client = github::Client::new(http_client, authentication());
-        let retriever = Retriever::new(github_client);
+        let issue_store = mock_issue_store();
+        let retriever = Retriever::new(github_client, issue_store);
 
         let pr_lifespan: f64 = retriever
             .get_pull_request_lifespan(&Repository::GitHub {
@@ -139,6 +151,19 @@ mod tests {
         let ten_minutes_in_seconds = 10.0 * 60.0;
         assert!(pr_lifespan > two_minutes_in_seconds);
         assert!(pr_lifespan < ten_minutes_in_seconds);
+    }
+
+    fn mock_issue_store() -> Box<dyn IssueStore> {
+        let mut issue_store = Box::new(MockIssueStore::new());
+        issue_store.expect_get_issues().return_const(None);
+        issue_store.expect_get_pull_requests().return_const(None);
+        issue_store
+            .expect_save_issues()
+            .return_once(|_, _, _, _| Ok(()));
+        issue_store
+            .expect_save_pull_requests()
+            .return_once(|_, _, _, _| Ok(()));
+        issue_store
     }
 
     fn authentication() -> Authentication {
