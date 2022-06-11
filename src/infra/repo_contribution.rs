@@ -117,7 +117,7 @@ mod tests {
     fn it_retrieves_the_issue_lifespan_of_dean() {
         let http_client = reqwest::blocking::Client::default();
         let github_client = github::Client::new(http_client, authentication());
-        let issue_store = Box::new(MockIssueStore::new()) as Box<dyn IssueStore>;
+        let issue_store = mock_issue_store();
         let retriever = Retriever::new(github_client, issue_store);
 
         let issue_lifespan: f64 = retriever
@@ -137,7 +137,7 @@ mod tests {
     fn it_retrieves_the_pull_request_lifespan_of_dean() {
         let http_client = reqwest::blocking::Client::default();
         let github_client = github::Client::new(http_client, authentication());
-        let issue_store = Box::new(MockIssueStore::new()) as Box<dyn IssueStore>;
+        let issue_store = mock_issue_store();
         let retriever = Retriever::new(github_client, issue_store);
 
         let pr_lifespan: f64 = retriever
@@ -151,6 +151,19 @@ mod tests {
         let ten_minutes_in_seconds = 10.0 * 60.0;
         assert!(pr_lifespan > two_minutes_in_seconds);
         assert!(pr_lifespan < ten_minutes_in_seconds);
+    }
+
+    fn mock_issue_store() -> Box<dyn IssueStore> {
+        let mut issue_store = Box::new(MockIssueStore::new());
+        issue_store.expect_get_issues().return_const(None);
+        issue_store.expect_get_pull_requests().return_const(None);
+        issue_store
+            .expect_save_issues()
+            .return_once(|_, _, _, _| Ok(()));
+        issue_store
+            .expect_save_pull_requests()
+            .return_once(|_, _, _, _| Ok(()));
+        issue_store
     }
 
     fn authentication() -> Authentication {
