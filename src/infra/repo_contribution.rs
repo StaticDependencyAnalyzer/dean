@@ -169,9 +169,9 @@ mod tests {
             .unwrap();
 
         let two_minutes_in_seconds = 2.0 * 60.0;
-        let ten_minutes_in_seconds = 10.0 * 60.0;
+        let two_hours_in_seconds = 2.0 * 60.0 * 60.0;
         assert!(pr_lifespan > two_minutes_in_seconds);
-        assert!(pr_lifespan < ten_minutes_in_seconds);
+        assert!(pr_lifespan < two_hours_in_seconds);
     }
 
     fn mock_issue_store() -> Box<dyn IssueStore> {
