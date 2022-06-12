@@ -30,7 +30,7 @@ pub trait ResultReporter {
         T: IntoIterator<Item = Evaluation>;
 }
 
-#[derive(Clone, PartialEq, Debug)]
+#[derive(Clone, PartialEq, Debug, Eq, Hash)]
 pub enum Repository {
     Unknown,
     GitHub { organization: String, name: String },
@@ -38,7 +38,7 @@ pub enum Repository {
     Raw { address: String },
 }
 
-#[derive(Clone, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Dependency {
     pub name: String,
     pub version: String,

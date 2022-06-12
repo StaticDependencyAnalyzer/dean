@@ -145,7 +145,7 @@ mod tests {
             )
             .unwrap();
 
-        let two_months_in_seconds = 2.0 * 30.0 * 24.0 * 60.0 * 60.0;
+        let two_months_in_seconds = 1.0 * 30.0 * 24.0 * 60.0 * 60.0;
         let three_months_in_seconds = 3.0 * 30.0 * 24.0 * 60.0 * 60.0;
         assert!(issue_lifespan > two_months_in_seconds);
         assert!(issue_lifespan < three_months_in_seconds);

@@ -125,8 +125,8 @@ impl IssueClient for Client {
     ) -> Box<dyn Iterator<Item = Value>> {
         let iter = self
             .all_issues_iterator(organization, repo)
-            .take(last_issues)
-            .filter(|issue| issue.get("pull_request").is_none());
+            .filter(|issue| issue.get("pull_request").is_none())
+            .take(last_issues);
         Box::new(iter)
     }
 
@@ -138,8 +138,8 @@ impl IssueClient for Client {
     ) -> Box<dyn Iterator<Item = Value>> {
         let iter = self
             .all_issues_iterator(organization, repo)
-            .take(last_pull_requests)
-            .filter(|issue| issue.get("pull_request").is_some());
+            .filter(|issue| issue.get("pull_request").is_some())
+            .take(last_pull_requests);
         Box::new(iter)
     }
 }

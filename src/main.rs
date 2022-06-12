@@ -64,10 +64,10 @@ fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box
                         dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy
                     );
                 }
-                Evaluation::Fail(policy, dep, reason) => {
+                Evaluation::Fail(policy, dep, reason, score) => {
                     warn!(
-                        "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is not okay: {}",
-                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy, reason,
+                        "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is not okay: {} (score: {})",
+                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy, reason, score,
                     );
                 }
             }

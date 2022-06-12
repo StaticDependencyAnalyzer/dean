@@ -140,6 +140,7 @@ mod tests {
                         "some_policy_name".to_string(),
                         dep.clone(),
                         "some_reason".into(),
+                        1.0,
                     ))
                 });
                 policy as Box<dyn Policy>
@@ -161,14 +162,27 @@ mod tests {
 
         let evaluation = policy_executor.evaluate(&dependency()).unwrap();
 
-        evaluation.should(consist_of(&[
-            Evaluation::Fail(
-                "some_policy_name".to_string(),
-                dependency(),
-                "some_reason".into(),
-            ),
-            Evaluation::Pass("some_policy_name2".to_string(), dependency()),
-        ]));
+        assert_eq!(evaluation.len(), 2);
+        match evaluation.get(0).unwrap() {
+            Evaluation::Fail(policy, dep, reason, score) => {
+                assert_eq!(policy, "some_policy_name");
+                assert_eq!(dep, &dependency());
+                assert_eq!(reason, "some_reason");
+                assert!((score - 1.0).abs() < f64::EPSILON);
+            }
+            Evaluation::Pass(_, _) => {
+                unreachable!()
+            }
+        }
+        match evaluation.get(1).unwrap() {
+            Evaluation::Pass(policy, dep) => {
+                assert_eq!(policy, "some_policy_name2");
+                assert_eq!(dep, &dependency());
+            }
+            Evaluation::Fail(_, _, _, _) => {
+                unreachable!()
+            }
+        };
     }
 
     #[test]
@@ -180,6 +194,7 @@ mod tests {
                     "some_policy_name".to_string(),
                     dep.clone(),
                     "some_reason".into(),
+                    1.0,
                 ))
             });
             policy as Box<dyn Policy>
@@ -218,6 +233,7 @@ mod tests {
                     "some_policy_name".to_string(),
                     dep.clone(),
                     "some_reason".into(),
+                    1.0,
                 ))
             });
             policy as Box<dyn Policy>
@@ -240,11 +256,18 @@ mod tests {
 
         let evaluation = policy_executor.evaluate(&dependency()).unwrap();
 
-        evaluation.should(consist_of(&[Evaluation::Fail(
-            "some_policy_name".to_string(),
-            dependency(),
-            "some_reason".into(),
-        )]));
+        assert_eq!(evaluation.len(), 1);
+        match evaluation.get(0).unwrap() {
+            Evaluation::Fail(policy, dep, reason, score) => {
+                assert_eq!(policy, "some_policy_name");
+                assert_eq!(dep, &dependency());
+                assert_eq!(reason, "some_reason");
+                assert!((score - 1.0) < f64::EPSILON);
+            }
+            Evaluation::Pass(_, _) => {
+                unreachable!()
+            }
+        }
     }
 
     #[test]

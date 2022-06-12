@@ -17,7 +17,16 @@ impl Policy for MaxPullRequestLifespan {
             .get_pull_request_lifespan(&dependency.repository, self.last_issues)?;
 
         if issue_lifespan > self.max_issue_lifespan {
-            Ok(Evaluation::Fail("max_pull_request_lifespan".to_string(),dependency.clone(), format!("the pull request lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan)))
+            let fail_score = if self.max_issue_lifespan == 0.0 {
+                1.0
+            } else {
+                issue_lifespan / self.max_issue_lifespan
+            };
+            Ok(Evaluation::Fail(
+                "max_pull_request_lifespan".to_string(),
+                dependency.clone(),
+                format!("the pull request lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan),
+                fail_score))
         } else {
             Ok(Evaluation::Pass(
                 "max_pull_request_lifespan".to_string(),
@@ -88,10 +97,11 @@ mod tests {
 
         let evaluation = issue_lifespan.evaluate(&dependency());
         match evaluation.unwrap() {
-            Evaluation::Fail(policy, dep, reason) => {
+            Evaluation::Fail(policy, dep, reason, score) => {
                 policy.should(equal("max_pull_request_lifespan".to_string()));
                 dep.should(equal(dependency()));
                 reason.should(equal("the pull request lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds"));
+                assert!((score - 1.02).abs() < f64::EPSILON);
             }
             Evaluation::Pass(_, _) => {
                 unreachable!()

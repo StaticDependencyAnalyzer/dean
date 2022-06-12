@@ -17,7 +17,8 @@ impl Policy for MaxIssueLifespan {
             .get_issue_lifespan(&dependency.repository, self.last_issues)?;
 
         if issue_lifespan > self.max_issue_lifespan {
-            Ok(Evaluation::Fail("max_issue_lifespan".to_string(),dependency.clone(), format!("the issue lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan)))
+            let fail_score = (issue_lifespan - self.max_issue_lifespan) / self.max_issue_lifespan;
+            Ok(Evaluation::Fail("max_issue_lifespan".to_string(),dependency.clone(), format!("the issue lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan), fail_score))
         } else {
             Ok(Evaluation::Pass(
                 "max_issue_lifespan".to_string(),
@@ -86,10 +87,11 @@ mod tests {
 
         let evaluation = issue_lifespan.evaluate(&dependency());
         match evaluation.unwrap() {
-            Evaluation::Fail(policy, dep, reason) => {
+            Evaluation::Fail(policy, dep, reason, score) => {
                 policy.should(equal("max_issue_lifespan".to_string()));
                 dep.should(equal(dependency()));
                 reason.should(equal("the issue lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds"));
+                assert!((score - 1.02).abs() < f64::EPSILON);
             }
             Evaluation::Pass(_, _) => {
                 unreachable!()
