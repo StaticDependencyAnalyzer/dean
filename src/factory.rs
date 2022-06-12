@@ -5,6 +5,8 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use log::info;
+
 use crate::infra::cached_issue_client::IssueStore;
 use crate::infra::clock::Clock;
 use crate::infra::git::{CommitStore, RepositoryRetriever};
@@ -190,8 +192,18 @@ impl Factory {
         let github_password = std::env::var("GITHUB_PASSWORD").ok();
 
         match github_username {
-            None => github::Authentication::None,
+            None => {
+                info!(target: "dean::github_authentication", "using anonymous authentication");
+                github::Authentication::None
+            }
             Some(github_username) => {
+                info!(
+                    target: "dean::github_authentication",
+                    "using basic authentication with username: {} and password: {}",
+                    &github_username,
+                    { if github_password.is_some() { "******" } else { "not set" } },
+                );
+
                 github::Authentication::Basic(github_username, github_password)
             }
         }
