@@ -117,16 +117,28 @@ impl Iterator for IssuePullRequestIterator {
 }
 
 impl IssueClient for Client {
-    fn get_issues(&self, organization: &str, repo: &str) -> Box<dyn Iterator<Item = Value>> {
+    fn get_last_issues(
+        &self,
+        organization: &str,
+        repo: &str,
+        last_issues: usize,
+    ) -> Box<dyn Iterator<Item = Value>> {
         let iter = self
             .all_issues_iterator(organization, repo)
+            .take(last_issues)
             .filter(|issue| issue.get("pull_request").is_none());
         Box::new(iter)
     }
 
-    fn get_pull_requests(&self, organization: &str, repo: &str) -> Box<dyn Iterator<Item = Value>> {
+    fn get_last_pull_requests(
+        &self,
+        organization: &str,
+        repo: &str,
+        last_pull_requests: usize,
+    ) -> Box<dyn Iterator<Item = Value>> {
         let iter = self
             .all_issues_iterator(organization, repo)
+            .take(last_pull_requests)
             .filter(|issue| issue.get("pull_request").is_some());
         Box::new(iter)
     }
@@ -147,7 +159,7 @@ impl Client {
         IssuePullRequestIterator {
             client: self.client.clone(),
             next_page: Some(format!(
-                "https://api.github.com/repos/{}/{}/issues?state=all&per_page=100&page=1",
+                "https://api.github.com/repos/{}/{}/issues?state=all&direction=asc&sort=created&per_page=100&page=1",
                 organization, repo
             )),
             buffer: vec![],
@@ -161,31 +173,37 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_retrieves_all_the_issues_from_dean() {
+    fn it_retrieves_the_issues_from_dean_from_newer_to_older() {
         let client = Client::new(reqwest::blocking::Client::new(), authentication());
 
-        let issues = client.get_issues("StaticDependencyAnalyzer", "dean");
+        let issues = client
+            .get_last_issues("StaticDependencyAnalyzer", "dean", 100)
+            .collect::<Vec<_>>();
 
-        assert!(issues.count() >= 6);
+        assert!(issues.len() >= 6);
+        assert!(creation_timestamp(&issues[0]) > creation_timestamp(&issues[1]));
     }
 
     #[test]
-    fn it_retrieves_all_prs_from_dean() {
+    fn it_retrieves_the_pull_requests_from_dean_from_newer_to_older() {
         let client = Client::new(reqwest::blocking::Client::new(), authentication());
 
-        let prs = client.get_pull_requests("StaticDependencyAnalyzer", "dean");
+        let prs = client
+            .get_last_pull_requests("StaticDependencyAnalyzer", "dean", 100)
+            .collect::<Vec<_>>();
 
-        assert!(prs.count() >= 6);
+        assert!(prs.len() > 10);
+        assert!(creation_timestamp(&prs[0]) > creation_timestamp(&prs[1]));
     }
 
     #[test]
     fn it_retrieves_150_issues_from_rust_lang() {
         let client = Client::new(reqwest::blocking::Client::new(), authentication());
 
-        let issues = client.get_issues("rust-lang", "rust");
-        assert_eq!(issues.take(150).count(), 150);
+        let issues = client.get_last_issues("rust-lang", "rust", 150);
+        assert!(issues.count() <= 150);
 
-        let mut issues = client.get_issues("rust-lang", "rust");
+        let mut issues = client.get_last_issues("rust-lang", "rust", 150);
         assert_eq!(
             issues
                 .next()
@@ -197,6 +215,12 @@ mod tests {
                 .unwrap(),
             "https://api.github.com/repos/rust-lang/rust"
         );
+    }
+
+    fn creation_timestamp(issue_or_pr: &Value) -> i64 {
+        let created_at_str = issue_or_pr["created_at"].as_str().unwrap();
+        let time = chrono::DateTime::parse_from_rfc3339(created_at_str).unwrap();
+        time.timestamp()
     }
 
     fn authentication() -> Authentication {

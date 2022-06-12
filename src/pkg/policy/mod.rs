@@ -44,8 +44,16 @@ pub trait CommitRetriever: Sync + Send {
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ContributionDataRetriever: Send + Sync {
-    fn get_issue_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>>;
-    fn get_pull_request_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>>;
+    fn get_issue_lifespan(
+        &self,
+        repository: &Repository,
+        last_issues: usize,
+    ) -> Result<f64, Box<dyn Error>>;
+    fn get_pull_request_lifespan(
+        &self,
+        repository: &Repository,
+        last_pull_requests: usize,
+    ) -> Result<f64, Box<dyn Error>>;
 }
 
 #[cfg_attr(test, mockall::automock)]

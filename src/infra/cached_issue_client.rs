@@ -1,13 +1,24 @@
 use std::error::Error;
 use std::sync::Arc;
 
+use concurrent_lru::sharded::{CacheHandle, LruCache};
 use log::error;
 use serde_json::Value;
 
 #[cfg_attr(test, mockall::automock)]
 pub trait IssueClient: Send + Sync {
-    fn get_issues(&self, organization: &str, repo: &str) -> Box<dyn Iterator<Item = Value>>;
-    fn get_pull_requests(&self, organization: &str, repo: &str) -> Box<dyn Iterator<Item = Value>>;
+    fn get_last_issues(
+        &self,
+        organization: &str,
+        repo: &str,
+        last_issues: usize,
+    ) -> Box<dyn Iterator<Item = Value>>;
+    fn get_last_pull_requests(
+        &self,
+        organization: &str,
+        repo: &str,
+        last_pull_requests: usize,
+    ) -> Box<dyn Iterator<Item = Value>>;
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -35,10 +46,18 @@ pub trait IssueStore: Send + Sync {
     ) -> Result<(), Box<dyn Error>>;
 }
 
+#[derive(Clone, Eq, PartialEq, Hash)]
+struct CacheKey {
+    organization: String,
+    repo: String,
+}
+
 pub struct CachedClient {
     provider: String,
     inner: Arc<dyn IssueClient>,
     store: Arc<dyn IssueStore>,
+    issue_cache: LruCache<CacheKey, Vec<Value>>,
+    pull_request_cache: LruCache<CacheKey, Vec<Value>>,
 }
 
 impl CachedClient {
@@ -51,48 +70,94 @@ impl CachedClient {
             provider: provider.to_string(),
             inner: inner.into(),
             store: store.into(),
+            issue_cache: LruCache::new(1024),
+            pull_request_cache: LruCache::new(1024),
         }
     }
 
-    pub fn get_issues(&self, organization: &str, repo: &str) -> Box<dyn Iterator<Item = Value>> {
-        if let Some(issues) = self.store.get_issues(&self.provider, organization, repo) {
-            return Box::new(issues.into_iter());
-        }
+    pub fn get_last_issues(
+        &self,
+        organization: &str,
+        repo: &str,
+        last_issues: usize,
+    ) -> Box<dyn Iterator<Item = Value>> {
+        let key = CacheKey {
+            organization: organization.to_string(),
+            repo: repo.to_string(),
+        };
 
-        let issues = self.inner.get_issues(organization, repo);
-        let issue_vec: Vec<Value> = issues.collect();
-        if let Err(err) = self
-            .store
-            .save_issues(&self.provider, organization, repo, &issue_vec)
-        {
-            error!("error saving issues: {:?}", err);
-        }
+        let issues: Result<CacheHandle<CacheKey, Vec<Value>>, Box<dyn Error>> =
+            self.issue_cache.get_or_try_init(key, 1, |_| {
+                if let Some(issues) = self.store.get_issues(&self.provider, organization, repo) {
+                    return Ok(issues);
+                }
 
-        Box::new(issue_vec.into_iter())
+                let issues = self.inner.get_last_issues(organization, repo, last_issues);
+                let issue_vec: Vec<_> = issues.collect();
+
+                self.store
+                    .save_issues(&self.provider, organization, repo, &issue_vec)?;
+
+                Ok(issue_vec)
+            });
+
+        match issues {
+            Ok(issues) => Box::new(issues.value().clone().into_iter()),
+            Err(err) => {
+                error!(
+                    "failed to get issues for {}/{}: {}",
+                    organization, repo, err
+                );
+                Box::new(std::iter::empty())
+            }
+        }
     }
 
     pub fn get_pull_requests(
         &self,
         organization: &str,
         repo: &str,
+        last_pull_requests: usize,
     ) -> Box<dyn Iterator<Item = Value>> {
-        if let Some(pull_requests) =
-            self.store
-                .get_pull_requests(&self.provider, organization, repo)
-        {
-            return Box::new(pull_requests.into_iter());
-        }
+        let key = CacheKey {
+            organization: organization.to_string(),
+            repo: repo.to_string(),
+        };
 
-        let pull_requests = self.inner.get_pull_requests(organization, repo);
-        let pull_request_vec: Vec<Value> = pull_requests.collect();
-        if let Err(err) =
-            self.store
-                .save_pull_requests(&self.provider, organization, repo, &pull_request_vec)
-        {
-            error!("error saving pull requests: {:?}", err);
-        }
+        let pull_requests: Result<CacheHandle<CacheKey, Vec<Value>>, Box<dyn Error>> =
+            self.pull_request_cache.get_or_try_init(key, 1, |_| {
+                if let Some(pull_requests) =
+                    self.store
+                        .get_pull_requests(&self.provider, organization, repo)
+                {
+                    return Ok(pull_requests);
+                }
 
-        Box::new(pull_request_vec.into_iter())
+                let pull_requests =
+                    self.inner
+                        .get_last_pull_requests(organization, repo, last_pull_requests);
+                let pull_request_vec: Vec<_> = pull_requests.collect();
+
+                self.store.save_pull_requests(
+                    &self.provider,
+                    organization,
+                    repo,
+                    &pull_request_vec,
+                )?;
+
+                Ok(pull_request_vec)
+            });
+
+        match pull_requests {
+            Ok(pull_requests) => Box::new(pull_requests.value().clone().into_iter()),
+            Err(err) => {
+                error!(
+                    "failed to get pull requests for {}/{}: {}",
+                    organization, repo, err
+                );
+                Box::new(std::iter::empty())
+            }
+        }
     }
 }
 
@@ -111,24 +176,20 @@ mod tests {
                 .once()
                 .return_once(|_, _, _, _| Ok(()));
             issue_store
-                .expect_get_issues()
-                .return_const(Some(issues_in_repo()))
-                .once();
-            issue_store
         };
         let issue_client: Box<dyn IssueClient> = {
             let mut issue_client = Box::new(MockIssueClient::new());
             issue_client
-                .expect_get_issues()
-                .return_once(|_, _| Box::new(issues_in_repo().into_iter()))
+                .expect_get_last_issues()
+                .return_once(|_, _, _| Box::new(issues_in_repo().into_iter()))
                 .once();
             issue_client
         };
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_issues = cached_client.get_issues("some_org", "some_repo");
-        let second_call_issues = cached_client.get_issues("some_org", "some_repo");
+        let first_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
+        let second_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
 
         assert!(first_call_issues.eq(issues_in_repo()));
         assert!(second_call_issues.eq(issues_in_repo()));
@@ -141,15 +202,15 @@ mod tests {
             issue_store
                 .expect_get_issues()
                 .return_const(Some(issues_in_repo()))
-                .times(2);
+                .times(1);
             issue_store
         };
         let issue_client: Box<dyn IssueClient> = Box::new(MockIssueClient::new());
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_issues = cached_client.get_issues("some_org", "some_repo");
-        let second_call_issues = cached_client.get_issues("some_org", "some_repo");
+        let first_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
+        let second_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
 
         assert!(first_call_issues.eq(issues_in_repo()));
         assert!(second_call_issues.eq(issues_in_repo()));
@@ -168,24 +229,21 @@ mod tests {
                 .once()
                 .return_once(|_, _, _, _| Ok(()));
             issue_store
-                .expect_get_pull_requests()
-                .return_const(Some(pull_requests_in_repo()))
-                .once();
-            issue_store
         };
         let issue_client: Box<dyn IssueClient> = {
             let mut issue_client = Box::new(MockIssueClient::new());
             issue_client
-                .expect_get_pull_requests()
-                .return_once(|_, _| Box::new(pull_requests_in_repo().into_iter()))
+                .expect_get_last_pull_requests()
+                .return_once(|_, _, _| Box::new(pull_requests_in_repo().into_iter()))
                 .once();
             issue_client
         };
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo");
-        let second_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo");
+        let first_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo", 10);
+        let second_call_pull_requests =
+            cached_client.get_pull_requests("some_org", "some_repo", 10);
 
         assert!(first_call_pull_requests.eq(pull_requests_in_repo()));
         assert!(second_call_pull_requests.eq(pull_requests_in_repo()));
@@ -198,15 +256,16 @@ mod tests {
             issue_store
                 .expect_get_pull_requests()
                 .return_const(Some(pull_requests_in_repo()))
-                .times(2);
+                .times(1);
             issue_store
         };
         let issue_client: Box<dyn IssueClient> = Box::new(MockIssueClient::new());
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo");
-        let second_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo");
+        let first_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo", 10);
+        let second_call_pull_requests =
+            cached_client.get_pull_requests("some_org", "some_repo", 10);
 
         assert!(first_call_pull_requests.eq(pull_requests_in_repo()));
         assert!(second_call_pull_requests.eq(pull_requests_in_repo()));
