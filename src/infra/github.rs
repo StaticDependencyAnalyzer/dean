@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use log::{debug, error, warn};
@@ -25,7 +26,10 @@ pub struct IssuePullRequestIterator {
 }
 
 impl IssuePullRequestIterator {
-    fn update_buffer(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+    fn update_buffer(
+        &mut self,
+        backoff: Option<(usize, std::time::Duration)>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         if self.next_page.is_none() {
             return Ok(());
         }
@@ -35,7 +39,7 @@ impl IssuePullRequestIterator {
         debug!(target: "dean::github_client", "Fetching issues from {}", url);
         let mut request = self
             .client
-            .get(url)
+            .get(&url)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.138 Safari/537.36")
             .header("Accept", "application/vnd.github.v3+json");
 
@@ -46,9 +50,26 @@ impl IssuePullRequestIterator {
         let response = request.send().context("Failed to get issues")?;
 
         if response.status().as_u16() == 403 {
-            warn!("Github API rate limit exceeded, retrying in 5 minutes");
-            std::thread::sleep(std::time::Duration::from_secs(5 * 60));
-            return self.update_buffer();
+            let total_allowed_attempts = 8;
+            self.next_page = Some(url);
+            // FIXME: Naive implementation of a retry strategy, change this to use the x-ratelimit-reset header in the response.
+            return match backoff {
+                None => {
+                    let initial_duration = Duration::from_secs(15);
+                    warn!(target: "dean::github_client", "Github API rate limit exceeded, remaining attempts [{}/{}], retrying in {} seconds", total_allowed_attempts, total_allowed_attempts, initial_duration.as_secs());
+                    std::thread::sleep(initial_duration);
+                    self.update_buffer(Some((total_allowed_attempts - 1, initial_duration * 2)))
+                }
+                Some((remaining_attempts, duration)) => {
+                    if remaining_attempts == 0 {
+                        return Err("Github API rate limit exceeded, stopping iteration".into());
+                    }
+
+                    warn!(target: "dean::github_client", "Github API rate limit exceeded, remaining attempts [{}/{}], retrying in {} seconds", remaining_attempts, total_allowed_attempts, duration.as_secs());
+                    std::thread::sleep(duration);
+                    self.update_buffer(Some((remaining_attempts - 1, duration * 2)))
+                }
+            };
         }
 
         if let Some(link) = response.headers().get("link") {
@@ -85,7 +106,7 @@ impl Iterator for IssuePullRequestIterator {
             return self.buffer.pop();
         };
 
-        match self.update_buffer() {
+        match self.update_buffer(None) {
             Ok(_) => self.buffer.pop(),
             Err(error) => {
                 error!("error retrieving issues: {:?}", error);
