@@ -17,7 +17,11 @@ impl Policy for MaxIssueLifespan {
             .get_issue_lifespan(&dependency.repository, self.last_issues)?;
 
         if issue_lifespan > self.max_issue_lifespan {
-            let fail_score = (issue_lifespan - self.max_issue_lifespan) / self.max_issue_lifespan;
+            let fail_score = if self.max_issue_lifespan == 0.0 {
+                1.0
+            } else {
+                issue_lifespan / self.max_issue_lifespan
+            };
             Ok(Evaluation::Fail("max_issue_lifespan".to_string(),dependency.clone(), format!("the issue lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan), fail_score))
         } else {
             Ok(Evaluation::Pass(
