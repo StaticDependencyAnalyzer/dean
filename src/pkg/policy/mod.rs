@@ -44,8 +44,16 @@ pub trait CommitRetriever: Sync + Send {
 
 #[cfg_attr(test, mockall::automock)]
 pub trait ContributionDataRetriever: Send + Sync {
-    fn get_issue_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>>;
-    fn get_pull_request_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>>;
+    fn get_issue_lifespan(
+        &self,
+        repository: &Repository,
+        last_issues: usize,
+    ) -> Result<f64, Box<dyn Error>>;
+    fn get_pull_request_lifespan(
+        &self,
+        repository: &Repository,
+        last_pull_requests: usize,
+    ) -> Result<f64, Box<dyn Error>>;
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -57,14 +65,37 @@ pub trait Clock: Sync + Send {
 #[derive(Clone, Debug)]
 pub enum Evaluation {
     Pass(String, Dependency),
-    Fail(String, Dependency, String),
+    Fail(String, Dependency, String, f64),
+}
+
+impl Evaluation {
+    pub fn policy(&self) -> &str {
+        match self {
+            Evaluation::Fail(policy, _, _, _) | Evaluation::Pass(policy, _) => policy,
+        }
+    }
+
+    pub fn dependency(&self) -> &Dependency {
+        match self {
+            Evaluation::Fail(_, dependency, _, _) | Evaluation::Pass(_, dependency) => dependency,
+        }
+    }
+
+    pub fn fail_score(&self) -> f64 {
+        match self {
+            Evaluation::Pass(_, _) => 0.0,
+            Evaluation::Fail(_, _, _, score) => *score,
+        }
+    }
 }
 
 impl PartialEq for Evaluation {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Evaluation::Fail(policy, _, _), Evaluation::Fail(policy2, _, _))
-            | (Evaluation::Pass(policy, _), Evaluation::Pass(policy2, _)) => policy == policy2,
+            (Evaluation::Fail(policy, _, _, score), Evaluation::Fail(policy2, _, _, score2)) => {
+                policy == policy2 && score == score2
+            }
+            (Evaluation::Pass(policy, _), Evaluation::Pass(policy2, _)) => policy == policy2,
             _ => false,
         }
     }

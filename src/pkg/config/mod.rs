@@ -117,9 +117,11 @@ mod tests {
                 }),
                 max_issue_lifespan: Some(max_issue_lifespan::Config {
                     max_lifespan_in_seconds: 2_592_000_usize,
+                    last_issues: 300,
                 }),
                 max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
                     max_lifespan_in_seconds: 2_592_000_usize,
+                    last_pull_requests: 300,
                 }),
             },
             dependency_config: vec![],
@@ -141,9 +143,11 @@ mod tests {
                 }),
                 max_issue_lifespan: Some(max_issue_lifespan::Config {
                     max_lifespan_in_seconds: 2_592_000_usize,
+                    last_issues: 300,
                 }),
                 max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
                     max_lifespan_in_seconds: 2_592_000_usize,
+                    last_pull_requests: 300,
                 }),
             },
             dependency_config: vec![],
@@ -166,8 +170,10 @@ default_policies:
     days: 365
   max_issue_lifespan:
     max_lifespan_in_seconds: 2592000
+    last_issues: 300
   max_pull_request_lifespan:
     max_lifespan_in_seconds: 2592000
+    last_pull_requests: 300
 dependency_config: []
 ",
         ));
@@ -217,9 +223,11 @@ dependency_config: []
                         ),
                         max_issue_lifespan: Some(max_issue_lifespan::Config {
                             max_lifespan_in_seconds: 2_592_000_usize,
+                            last_issues: 300,
                         }),
                         max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
                             max_lifespan_in_seconds: 2_592_000_usize,
+                            last_pull_requests: 300,
                         }),
                     },
                 },
@@ -252,8 +260,10 @@ dependency_config:
       days: 180
     max_issue_lifespan:
       max_lifespan_in_seconds: 2592000
+      last_issues: 300
     max_pull_request_lifespan:
       max_lifespan_in_seconds: 2592000
+      last_issues: 300
 - name: bar
   policies:
     contributors_ratio:
@@ -284,8 +294,10 @@ default_policies:
     days: 180
   max_issue_lifespan:
     max_lifespan_in_seconds: 2592000
+    last_issues: 300
   max_pull_request_lifespan:
     max_lifespan_in_seconds: 2592000
+    last_issues: 300
 "
         .as_bytes()
     }

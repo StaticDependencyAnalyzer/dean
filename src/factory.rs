@@ -94,6 +94,7 @@ impl Factory {
                 MaxIssueLifespan::new(
                     self.contribution_retriever(),
                     policy.max_lifespan_in_seconds as f64,
+                    policy.last_issues,
                 ),
             ));
         }
@@ -103,6 +104,7 @@ impl Factory {
                 MaxPullRequestLifespan::new(
                     self.contribution_retriever(),
                     policy.max_lifespan_in_seconds as f64,
+                    policy.last_pull_requests,
                 ),
             ));
         }

@@ -37,6 +37,9 @@ impl Policy for MinNumberOfReleasesRequired {
                 dependency.clone(),
             ))
         } else {
+            #[allow(clippy::cast_precision_loss)]
+            let fail_score = (self.number_of_releases as f64 - num_tags_in_range as f64)
+                / self.number_of_releases as f64;
             Ok(Evaluation::Fail(
                 "min_number_of_releases_required".to_string(),
                 dependency.clone(),
@@ -46,6 +49,7 @@ impl Policy for MinNumberOfReleasesRequired {
                     self.duration.as_secs() / (24 * 60 * 60),
                     num_tags_in_range
                 ),
+                fail_score,
             ))
         }
     }
@@ -179,6 +183,7 @@ mod tests {
             "min_number_of_releases_required".to_string(),
             dependency,
             "expected 2 releases in the last 1260 days, but found 1".to_string(),
+            0.5,
         ))));
     }
 
@@ -235,6 +240,7 @@ mod tests {
             "min_number_of_releases_required".to_string(),
             dependency,
             "expected 2 releases in the last 1260 days, but found 0".to_string(),
+            1.0,
         ))));
     }
 }

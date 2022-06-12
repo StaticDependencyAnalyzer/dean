@@ -26,8 +26,10 @@ impl Retriever {
         }
     }
 
-    fn get_github_issue_lifespan(&self, organization: &str, repo: &str) -> f64 {
-        let issues = self.github_cached_client.get_issues(organization, repo);
+    fn get_github_issue_lifespan(&self, organization: &str, repo: &str, last_issues: usize) -> f64 {
+        let issues = self
+            .github_cached_client
+            .get_last_issues(organization, repo, last_issues);
 
         let closed_issues =
             issues.filter(|issue| issue.get("state").unwrap().as_str().unwrap() == "closed");
@@ -46,10 +48,15 @@ impl Retriever {
         lifespan_per_issue.mean()
     }
 
-    fn get_github_pull_request_lifespan(&self, organization: &str, repo: &str) -> f64 {
-        let prs = self
-            .github_cached_client
-            .get_pull_requests(organization, repo);
+    fn get_github_pull_request_lifespan(
+        &self,
+        organization: &str,
+        repo: &str,
+        last_pull_requests: usize,
+    ) -> f64 {
+        let prs =
+            self.github_cached_client
+                .get_pull_requests(organization, repo, last_pull_requests);
 
         let closed_prs = prs.filter(|pr| pr.get("state").unwrap().as_str().unwrap() == "closed");
 
@@ -85,21 +92,29 @@ where
 }
 
 impl ContributionDataRetriever for Retriever {
-    fn get_issue_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>> {
+    fn get_issue_lifespan(
+        &self,
+        repository: &Repository,
+        last_issues: usize,
+    ) -> Result<f64, Box<dyn Error>> {
         match repository {
             Repository::Unknown => Err("unknown repository".into()),
             Repository::GitHub { name, organization } => {
-                Ok(self.get_github_issue_lifespan(organization, name))
+                Ok(self.get_github_issue_lifespan(organization, name, last_issues))
             }
             Repository::GitLab { .. } | Repository::Raw { .. } => Err("not implemented".into()),
         }
     }
 
-    fn get_pull_request_lifespan(&self, repository: &Repository) -> Result<f64, Box<dyn Error>> {
+    fn get_pull_request_lifespan(
+        &self,
+        repository: &Repository,
+        last_pull_requests: usize,
+    ) -> Result<f64, Box<dyn Error>> {
         match repository {
             Repository::Unknown => Err("unknown repository".into()),
             Repository::GitHub { name, organization } => {
-                Ok(self.get_github_pull_request_lifespan(organization, name))
+                Ok(self.get_github_pull_request_lifespan(organization, name, last_pull_requests))
             }
             Repository::GitLab { .. } | Repository::Raw { .. } => Err("not implemented".into()),
         }
@@ -121,13 +136,16 @@ mod tests {
         let retriever = Retriever::new(github_client, issue_store);
 
         let issue_lifespan: f64 = retriever
-            .get_issue_lifespan(&Repository::GitHub {
-                organization: "StaticDependencyAnalyzer".to_string(),
-                name: "dean".to_string(),
-            })
+            .get_issue_lifespan(
+                &Repository::GitHub {
+                    organization: "StaticDependencyAnalyzer".to_string(),
+                    name: "dean".to_string(),
+                },
+                10,
+            )
             .unwrap();
 
-        let two_months_in_seconds = 2.0 * 30.0 * 24.0 * 60.0 * 60.0;
+        let two_months_in_seconds = 1.0 * 30.0 * 24.0 * 60.0 * 60.0;
         let three_months_in_seconds = 3.0 * 30.0 * 24.0 * 60.0 * 60.0;
         assert!(issue_lifespan > two_months_in_seconds);
         assert!(issue_lifespan < three_months_in_seconds);
@@ -141,10 +159,13 @@ mod tests {
         let retriever = Retriever::new(github_client, issue_store);
 
         let pr_lifespan: f64 = retriever
-            .get_pull_request_lifespan(&Repository::GitHub {
-                organization: "StaticDependencyAnalyzer".to_string(),
-                name: "dean".to_string(),
-            })
+            .get_pull_request_lifespan(
+                &Repository::GitHub {
+                    organization: "StaticDependencyAnalyzer".to_string(),
+                    name: "dean".to_string(),
+                },
+                10,
+            )
             .unwrap();
 
         let two_minutes_in_seconds = 2.0 * 60.0;

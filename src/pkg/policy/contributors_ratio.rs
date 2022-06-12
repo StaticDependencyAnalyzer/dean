@@ -62,7 +62,8 @@ impl Policy for ContributorsRatio {
             .map(|(count, author)| (count as f64 / all_authors_count as f64, author));
 
         for (rate, author) in authors_with_rate {
-            if rate > self.max_contributor_ratio {
+            if rate > self.max_contributor_ratio && self.max_contributor_ratio > 0.0 {
+                let fail_score = rate / self.max_contributor_ratio;
                 return Ok(Evaluation::Fail(
                     "contributors_ratio".to_string(),
                     dependency.clone(),
@@ -70,6 +71,7 @@ impl Policy for ContributorsRatio {
                         "the rate of contribution is too high ({} > {}) for author {}",
                         rate, self.max_contributor_ratio, author
                     ),
+                    fail_score,
                 ));
             }
         }
@@ -228,10 +230,20 @@ mod tests {
 
         let result = contributors_ratio_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Fail(
-            "contributors_ratio".to_string(),
-            dependency,
-            "the rate of contribution is too high (1 > 0.9) for author SomeAuthor".to_owned(),
-        ))));
+        match result.unwrap() {
+            Evaluation::Fail(policy, dep, reason, score) => {
+                policy.should(equal("contributors_ratio".to_string()));
+                dep.should(equal(dependency));
+                reason.should(equal(
+                    "the rate of contribution is too high (1 > 0.9) for author SomeAuthor"
+                        .to_owned(),
+                ));
+                println!("{}", score);
+                assert!((score - 1.111_111_111_111_111_2).abs() < f64::EPSILON);
+            }
+            Evaluation::Pass(_, _) => {
+                unreachable!()
+            }
+        }
     }
 }
