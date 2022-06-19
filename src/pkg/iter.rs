@@ -65,3 +65,22 @@ where
         self.channel.recv().ok()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use rayon::prelude::ParallelBridge;
+
+    use super::*;
+
+    #[test]
+    fn it_transforms_a_parallel_iterator_into_sequential() {
+        let parallel_iterator = std::iter::once(1)
+            .cycle()
+            .take(5)
+            .par_bridge()
+            .map(|x| x + 1);
+        let sequential_iterator = parallel_iterator.to_seq(5);
+
+        assert_eq!(sequential_iterator.collect::<Vec<_>>(), vec![2, 2, 2, 2, 2]);
+    }
+}

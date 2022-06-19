@@ -10,20 +10,6 @@ pub struct ExecutionConfig {
     policies: Vec<Box<dyn Policy>>,
 }
 
-#[cfg(test)]
-impl PartialEq for ExecutionConfig {
-    fn eq(&self, other: &Self) -> bool {
-        if self.regex.is_none() && other.regex.is_none() {
-            return self.policies.len() == other.policies.len();
-        }
-        if self.regex.is_some() && other.regex.is_some() {
-            return self.regex.as_ref().unwrap().as_str() == other.regex.as_ref().unwrap().as_str()
-                && self.policies.len() == other.policies.len();
-        }
-        false
-    }
-}
-
 impl ExecutionConfig {
     pub fn new(
         policies: Vec<Box<dyn Policy>>,
@@ -187,18 +173,7 @@ mod tests {
 
     #[test]
     fn it_executes_only_the_second_policy_because_it_doesnt_match_the_first() {
-        let non_matching_policies = vec![{
-            let mut policy = mock_policy();
-            policy.expect_evaluate().never().return_once(|dep| {
-                Ok(Evaluation::Fail(
-                    "some_policy_name".to_string(),
-                    dep.clone(),
-                    "some_reason".into(),
-                    1.0,
-                ))
-            });
-            policy as Box<dyn Policy>
-        }];
+        let non_matching_policies = vec![{ mock_policy() as Box<dyn Policy> }];
         let matching_policies = vec![{
             let mut policy = mock_policy();
             policy.expect_evaluate().once().return_once(|dep| {
@@ -240,12 +215,7 @@ mod tests {
         }];
         let non_matching_policies = vec![{
             let mut policy = mock_policy();
-            policy.expect_evaluate().never().return_once(|dep| {
-                Ok(Evaluation::Pass(
-                    "some_policy_name2".to_string(),
-                    dep.clone(),
-                ))
-            });
+            policy.expect_evaluate().never();
             policy as Box<dyn Policy>
         }];
         let config = vec![
@@ -273,16 +243,7 @@ mod tests {
     #[test]
     fn if_the_dependency_matches_it_is_evaluated_with_the_specified_policy_regardless_of_the_default_ones(
     ) {
-        let default_policies = vec![{
-            let mut policy = mock_policy();
-            policy.expect_evaluate().never().return_once(|dep| {
-                Ok(Evaluation::Pass(
-                    "some_policy_name".to_string(),
-                    dep.clone(),
-                ))
-            });
-            policy as Box<dyn Policy>
-        }];
+        let default_policies = vec![{ mock_policy() as Box<dyn Policy> }];
         let matching_policies = vec![{
             let mut policy = mock_policy();
             policy.expect_evaluate().once().return_once(|dep| {
