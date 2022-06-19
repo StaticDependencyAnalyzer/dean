@@ -170,6 +170,8 @@ impl Client {
 
 #[cfg(test)]
 mod tests {
+    use time::format_description::well_known::Rfc3339;
+
     use super::*;
 
     #[test]
@@ -219,8 +221,9 @@ mod tests {
 
     fn creation_timestamp(issue_or_pr: &Value) -> i64 {
         let created_at_str = issue_or_pr["created_at"].as_str().unwrap();
-        let time = chrono::DateTime::parse_from_rfc3339(created_at_str).unwrap();
-        time.timestamp()
+        time::OffsetDateTime::parse(created_at_str, &Rfc3339)
+            .unwrap()
+            .unix_timestamp()
     }
 
     fn authentication() -> Authentication {

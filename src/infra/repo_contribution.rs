@@ -1,6 +1,9 @@
 use std::error::Error;
 use std::sync::Arc;
 
+use time::format_description::well_known::Rfc3339;
+use time::OffsetDateTime;
+
 use crate::infra::cached_issue_client::{CachedClient, IssueClient, IssueStore};
 use crate::infra::github;
 use crate::pkg::policy::ContributionDataRetriever;
@@ -38,11 +41,11 @@ impl Retriever {
             let created_at_str = issue.get("created_at").unwrap().as_str().unwrap();
             let closed_at_str = issue.get("closed_at").unwrap().as_str().unwrap();
 
-            let created_at = chrono::DateTime::parse_from_rfc3339(created_at_str).unwrap();
-            let closed_at = chrono::DateTime::parse_from_rfc3339(closed_at_str).unwrap();
+            let created_at = OffsetDateTime::parse(created_at_str, &Rfc3339).unwrap();
+            let closed_at = OffsetDateTime::parse(closed_at_str, &Rfc3339).unwrap();
+            let lifespan = closed_at - created_at;
 
-            let lifespan = closed_at.signed_duration_since(created_at);
-            f64::from(i32::try_from(lifespan.num_seconds()).unwrap())
+            lifespan.as_seconds_f64()
         });
 
         lifespan_per_issue.mean()
@@ -64,11 +67,11 @@ impl Retriever {
             let created_at_str = pr.get("created_at").unwrap().as_str().unwrap();
             let closed_at_str = pr.get("closed_at").unwrap().as_str().unwrap();
 
-            let created_at = chrono::DateTime::parse_from_rfc3339(created_at_str).unwrap();
-            let closed_at = chrono::DateTime::parse_from_rfc3339(closed_at_str).unwrap();
+            let created_at = OffsetDateTime::parse(created_at_str, &Rfc3339).unwrap();
+            let closed_at = OffsetDateTime::parse(closed_at_str, &Rfc3339).unwrap();
+            let lifespan = closed_at - created_at;
 
-            let lifespan = closed_at.signed_duration_since(created_at);
-            f64::from(i32::try_from(lifespan.num_seconds()).unwrap())
+            lifespan.as_seconds_f64()
         });
 
         lifespan_per_pr.mean()
