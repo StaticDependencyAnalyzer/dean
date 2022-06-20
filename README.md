@@ -41,9 +41,9 @@ Make sure to add `~/.cargo/bin` directory to your `PATH` variable.
   > If the contributor ratio is low, the project is maintained by multiple people and has lower risk.
 - [x] Minimum number of releases required
   > If the number of releases is very low, it can be potentially abandoned.
-- [ ] Issue life span in GitHub projects
+- [x] Issue life span in GitHub projects
   > Shows the activity of the project when issues are reported.
-- [ ] Pull Request life span in GitHub projects
+- [x] Pull Request life span in GitHub projects
   > Shows the activity of the project when new PRs are submitted.
 - [ ] Number of stars of a project in GitHub
   > A high number of stars in a project shows interest by the community.
