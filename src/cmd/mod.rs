@@ -11,7 +11,7 @@ pub struct Args {
 #[derive(Subcommand, Debug)]
 pub enum Commands {
     #[clap(
-        about = "Scans the dependencies of a given lock file. Supported lock files are: `Cargo.lock` and `package-lock.json`"
+        about = "Scans the dependencies of a given lock file. Supported lock files are: `Cargo.lock`, `package-lock.json` and `yarn.lock`"
     )]
     Scan {
         #[clap(long, short, default_value = "Cargo.lock")]
