@@ -100,8 +100,6 @@ impl ContributorsRatio {
 mod tests {
     use std::collections::HashMap;
 
-    use expects::matcher::{be_ok, equal};
-    use expects::Subject;
     use mockall::predicate::eq;
 
     use super::super::{Commit, MockCommitRetriever, Tag};
@@ -170,10 +168,10 @@ mod tests {
         };
         let result = contributors_ratio_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Pass(
-            "contributors_ratio".to_string(),
-            dependency,
-        ))));
+        assert_eq!(
+            result.unwrap(),
+            Evaluation::Pass("contributors_ratio".to_string(), dependency.clone())
+        );
     }
     #[test]
     fn if_the_contributor_ratio_for_the_latest_release_is_higher_than_90_percent_it_should_fail() {
@@ -232,12 +230,12 @@ mod tests {
 
         match result.unwrap() {
             Evaluation::Fail(policy, dep, reason, score) => {
-                policy.should(equal("contributors_ratio".to_string()));
-                dep.should(equal(dependency));
-                reason.should(equal(
+                assert_eq!(policy, "contributors_ratio");
+                assert_eq!(dep, dependency);
+                assert_eq!(
+                    reason,
                     "the rate of contribution is too high (1 > 0.9) for author SomeAuthor"
-                        .to_owned(),
-                ));
+                );
                 println!("{}", score);
                 assert!((score - 1.111_111_111_111_111_2).abs() < f64::EPSILON);
             }

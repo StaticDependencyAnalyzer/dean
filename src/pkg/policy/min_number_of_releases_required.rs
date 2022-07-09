@@ -78,8 +78,6 @@ impl MinNumberOfReleasesRequired {
 mod tests {
     use std::time::Duration;
 
-    use expects::matcher::{be_ok, equal};
-    use expects::Subject;
     use mockall::predicate::eq;
 
     use super::super::{MockClock, MockCommitRetriever, Tag};
@@ -137,10 +135,10 @@ mod tests {
         let result: Result<Evaluation, Box<dyn Error>> =
             number_of_releases_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Pass(
-            "min_number_of_releases_required".to_string(),
-            dependency,
-        ))));
+        assert_eq!(
+            result.unwrap(),
+            Evaluation::Pass("min_number_of_releases_required".to_string(), dependency)
+        );
     }
 
     #[test]
@@ -179,12 +177,15 @@ mod tests {
         let result: Result<Evaluation, Box<dyn Error>> =
             number_of_releases_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Fail(
-            "min_number_of_releases_required".to_string(),
-            dependency,
-            "expected 2 releases in the last 1260 days, but found 1".to_string(),
-            0.5,
-        ))));
+        assert_eq!(
+            result.unwrap(),
+            Evaluation::Fail(
+                "min_number_of_releases_required".to_string(),
+                dependency,
+                "expected 2 releases in the last 1260 days, but found 1".to_string(),
+                0.5,
+            )
+        );
     }
 
     #[test]
@@ -236,11 +237,14 @@ mod tests {
         let result: Result<Evaluation, Box<dyn Error>> =
             number_of_releases_policy.evaluate(&dependency);
 
-        result.should(be_ok(equal(Evaluation::Fail(
-            "min_number_of_releases_required".to_string(),
-            dependency,
-            "expected 2 releases in the last 1260 days, but found 0".to_string(),
-            1.0,
-        ))));
+        assert_eq!(
+            result.unwrap(),
+            Evaluation::Fail(
+                "min_number_of_releases_required".to_string(),
+                dependency,
+                "expected 2 releases in the last 1260 days, but found 0".to_string(),
+                1.0,
+            )
+        );
     }
 }

@@ -72,10 +72,6 @@ impl PolicyExecutor {
 
 #[cfg(test)]
 mod tests {
-
-    use expects::matcher::consist_of;
-    use expects::Subject;
-
     use super::*;
     use crate::pkg::policy::MockPolicy;
     use crate::pkg::Repository;
@@ -110,10 +106,13 @@ mod tests {
 
         let evaluation = policy_executor.evaluate(&dependency()).unwrap();
 
-        evaluation.should(consist_of(&[
-            Evaluation::Pass("some_policy_name".to_string(), dependency()),
-            Evaluation::Pass("some_policy_name2".to_string(), dependency()),
-        ]));
+        assert_eq!(
+            evaluation,
+            &[
+                Evaluation::Pass("some_policy_name".to_string(), dependency()),
+                Evaluation::Pass("some_policy_name2".to_string(), dependency()),
+            ]
+        );
     }
 
     #[test]
@@ -193,10 +192,13 @@ mod tests {
 
         let evaluation = policy_executor.evaluate(&dependency()).unwrap();
 
-        evaluation.should(consist_of(&[Evaluation::Pass(
-            "some_policy_name2".to_string(),
-            dependency(),
-        )]));
+        assert_eq!(
+            evaluation,
+            &[Evaluation::Pass(
+                "some_policy_name2".to_string(),
+                dependency()
+            )]
+        );
     }
 
     #[test]
@@ -262,10 +264,13 @@ mod tests {
 
         let evaluation = policy_executor.evaluate(&dependency()).unwrap();
 
-        evaluation.should(consist_of(&[Evaluation::Pass(
-            "some_policy_name2".to_string(),
-            dependency(),
-        )]));
+        assert_eq!(
+            evaluation,
+            &[Evaluation::Pass(
+                "some_policy_name2".to_string(),
+                dependency()
+            )]
+        );
     }
 
     fn dependency() -> Dependency {

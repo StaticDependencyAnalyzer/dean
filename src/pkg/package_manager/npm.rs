@@ -77,8 +77,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use expects::matcher::equal;
-    use expects::Subject;
     use mockall::predicate::eq;
 
     use super::*;
@@ -109,11 +107,9 @@ mod tests {
         let dependency_reader = DependencyReader::new(npm_package_lock(), retriever);
         let dependencies = dependency_reader.dependencies();
 
-        dependencies
-            .unwrap()
-            .next()
-            .unwrap()
-            .should(equal(Dependency {
+        assert_eq!(
+            dependencies.unwrap().next().unwrap(),
+            Dependency {
                 name: "colors".into(),
                 version: "1.4.0".into(),
                 latest_version: Some("1.4.1".into()),
@@ -121,7 +117,8 @@ mod tests {
                     organization: "org".into(),
                     name: "name".into(),
                 },
-            }));
+            }
+        );
     }
 
     fn npm_package_lock() -> &'static [u8] {

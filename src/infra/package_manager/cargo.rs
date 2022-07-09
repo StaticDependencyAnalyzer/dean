@@ -78,9 +78,6 @@ impl crate::pkg::InfoRetriever for InfoRetriever {
 
 #[cfg(test)]
 mod tests {
-    use expects::matcher::equal;
-    use expects::Subject;
-
     use super::*;
     use crate::pkg::InfoRetriever as _;
 
@@ -90,7 +87,7 @@ mod tests {
 
         let result = retriever.latest_version("serde");
 
-        result.unwrap().should(equal("1.0.138"));
+        assert_eq!(result.unwrap(), "1.0.138");
     }
 
     #[test]
@@ -99,9 +96,12 @@ mod tests {
 
         let result = retriever.repository("serde");
 
-        result.unwrap().should(equal(Repository::GitHub {
-            organization: "serde-rs".to_string(),
-            name: "serde".to_string(),
-        }));
+        assert_eq!(
+            result.unwrap(),
+            Repository::GitHub {
+                organization: "serde-rs".into(),
+                name: "serde".into(),
+            }
+        );
     }
 }

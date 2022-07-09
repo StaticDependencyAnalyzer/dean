@@ -61,9 +61,6 @@ impl crate::pkg::InfoRetriever for InfoRetriever {
 
 #[cfg(test)]
 mod tests {
-    use expects::matcher::{be_ok, equal};
-    use expects::Subject;
-
     use super::InfoRetriever;
     use crate::pkg::InfoRetriever as _;
     use crate::pkg::Repository;
@@ -74,7 +71,7 @@ mod tests {
 
         let result = retriever.latest_version("colors");
 
-        result.should(be_ok(equal("1.4.0")));
+        assert_eq!(result.unwrap(), "1.4.0");
     }
 
     #[test]
@@ -83,10 +80,13 @@ mod tests {
 
         let result = retriever.repository("colors");
 
-        result.should(be_ok(equal(Repository::GitHub {
-            organization: "Marak".into(),
-            name: "colors.js".into(),
-        })));
+        assert_eq!(
+            result.unwrap(),
+            Repository::GitHub {
+                organization: "Marak".into(),
+                name: "colors.js".into(),
+            }
+        );
     }
 
     #[test]
@@ -95,10 +95,13 @@ mod tests {
 
         let result = retriever.repository("babel");
 
-        result.should(be_ok(equal(Repository::GitHub {
-            organization: "babel".into(),
-            name: "babel".into(),
-        })));
+        assert_eq!(
+            result.unwrap(),
+            Repository::GitHub {
+                organization: "babel".into(),
+                name: "babel".into(),
+            }
+        );
     }
 
     #[test]
@@ -107,10 +110,13 @@ mod tests {
 
         let result = retriever.repository("bfj");
 
-        result.should(be_ok(equal(Repository::GitLab {
-            organization: "philbooth".into(),
-            name: "bfj".into(),
-        })));
+        assert_eq!(
+            result.unwrap(),
+            Repository::GitLab {
+                organization: "philbooth".into(),
+                name: "bfj".into(),
+            }
+        );
     }
 
     #[test]
@@ -119,9 +125,12 @@ mod tests {
 
         let result = retriever.repository("atob");
 
-        result.should(be_ok(equal(Repository::Raw {
-            address: "git://git.coolaj86.com/coolaj86/atob.js.git".into(),
-        })));
+        assert_eq!(
+            result.unwrap(),
+            Repository::Raw {
+                address: "git://git.coolaj86.com/coolaj86/atob.js.git".into(),
+            }
+        );
     }
 
     #[test]
@@ -130,6 +139,6 @@ mod tests {
 
         let result = retriever.repository("@types/json5");
 
-        result.should(be_ok(equal(Repository::Unknown)));
+        assert_eq!(result.unwrap(), Repository::Unknown);
     }
 }

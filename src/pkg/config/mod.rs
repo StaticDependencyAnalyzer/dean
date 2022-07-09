@@ -97,68 +97,76 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
-    use expects::matcher::equal;
-    use expects::Subject;
-
     use super::*;
 
     #[test]
     fn it_loads_the_default_config_from_an_empty_file() {
         let config: Config = Config::load_from_reader(&mut "".as_bytes()).unwrap_or_default();
-        config.should(equal(Config {
-            default_policies: Policies {
-                contributors_ratio: Some(contributors_ratio::Config {
-                    max_number_of_releases_to_check: 3_usize,
-                    max_contributor_ratio: 0.5,
-                }),
-                min_number_of_releases_required: Some(min_number_of_releases_required::Config {
-                    min_number_of_releases: 3_usize,
-                    days: 365_u64,
-                }),
-                max_issue_lifespan: Some(max_issue_lifespan::Config {
-                    max_lifespan_in_seconds: 2_592_000_usize,
-                    last_issues: 300,
-                }),
-                max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
-                    max_lifespan_in_seconds: 2_592_000_usize,
-                    last_pull_requests: 300,
-                }),
-            },
-            dependency_config: vec![],
-        }));
+        assert_eq!(
+            config,
+            Config {
+                default_policies: Policies {
+                    contributors_ratio: Some(contributors_ratio::Config {
+                        max_number_of_releases_to_check: 3_usize,
+                        max_contributor_ratio: 0.5,
+                    }),
+                    min_number_of_releases_required: Some(
+                        min_number_of_releases_required::Config {
+                            min_number_of_releases: 3_usize,
+                            days: 365_u64,
+                        }
+                    ),
+                    max_issue_lifespan: Some(max_issue_lifespan::Config {
+                        max_lifespan_in_seconds: 2_592_000_usize,
+                        last_issues: 300,
+                    }),
+                    max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
+                        max_lifespan_in_seconds: 2_592_000_usize,
+                        last_pull_requests: 300,
+                    }),
+                },
+                dependency_config: vec![],
+            }
+        );
     }
 
     #[test]
     fn it_loads_the_config_from_reader() {
         let config: Config = Config::load_from_reader(&mut config_example()).unwrap();
-        config.should(equal(Config {
-            default_policies: Policies {
-                contributors_ratio: Some(contributors_ratio::Config {
-                    max_number_of_releases_to_check: 3_usize,
-                    max_contributor_ratio: 0.8,
-                }),
-                min_number_of_releases_required: Some(min_number_of_releases_required::Config {
-                    min_number_of_releases: 3_usize,
-                    days: 180_u64,
-                }),
-                max_issue_lifespan: Some(max_issue_lifespan::Config {
-                    max_lifespan_in_seconds: 2_592_000_usize,
-                    last_issues: 300,
-                }),
-                max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
-                    max_lifespan_in_seconds: 2_592_000_usize,
-                    last_pull_requests: 300,
-                }),
-            },
-            dependency_config: vec![],
-        }));
+        assert_eq!(
+            config,
+            Config {
+                default_policies: Policies {
+                    contributors_ratio: Some(contributors_ratio::Config {
+                        max_number_of_releases_to_check: 3_usize,
+                        max_contributor_ratio: 0.8,
+                    }),
+                    min_number_of_releases_required: Some(
+                        min_number_of_releases_required::Config {
+                            min_number_of_releases: 3_usize,
+                            days: 180_u64,
+                        }
+                    ),
+                    max_issue_lifespan: Some(max_issue_lifespan::Config {
+                        max_lifespan_in_seconds: 2_592_000_usize,
+                        last_issues: 300,
+                    }),
+                    max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
+                        max_lifespan_in_seconds: 2_592_000_usize,
+                        last_pull_requests: 300,
+                    }),
+                },
+                dependency_config: vec![],
+            }
+        );
     }
 
     #[test]
     fn it_dumps_the_config_to_string() {
         let config: Config = Config::default();
         let config_string = config.dump_to_string().unwrap();
-        config_string.should(equal(
+        assert_eq!(
+            config_string,
             "\
 ---
 default_policies:
@@ -175,76 +183,82 @@ default_policies:
     max_lifespan_in_seconds: 2592000
     last_pull_requests: 300
 dependency_config: []
-",
-        ));
+"
+        );
     }
 
     #[test]
     fn it_loads_the_config_with_a_missing_policy() {
         let config: Config =
             Config::load_from_reader(&mut config_example_with_missing_policy()).unwrap();
-        config.should(equal(Config {
-            default_policies: Policies {
-                contributors_ratio: Some(contributors_ratio::Config {
-                    max_number_of_releases_to_check: 3_usize,
-                    max_contributor_ratio: 0.5,
-                }),
-                min_number_of_releases_required: None,
-                max_issue_lifespan: None,
-                max_pull_request_lifespan: None,
-            },
-            dependency_config: vec![],
-        }));
+        assert_eq!(
+            config,
+            Config {
+                default_policies: Policies {
+                    contributors_ratio: Some(contributors_ratio::Config {
+                        max_number_of_releases_to_check: 3_usize,
+                        max_contributor_ratio: 0.5,
+                    }),
+                    min_number_of_releases_required: None,
+                    max_issue_lifespan: None,
+                    max_pull_request_lifespan: None,
+                },
+                dependency_config: vec![],
+            }
+        );
     }
 
     #[test]
     fn it_loads_the_config_for_a_specific_policy() {
         let config = Config::load_from_reader(&mut config_example_for_specific_policy()).unwrap();
-        config.should(equal(Config {
-            default_policies: Policies {
-                contributors_ratio: None,
-                min_number_of_releases_required: None,
-                max_issue_lifespan: None,
-                max_pull_request_lifespan: None,
-            },
-            dependency_config: vec![
-                DependencyConfiguration {
-                    name: "foo".to_string(),
-                    policies: Policies {
-                        contributors_ratio: Some(contributors_ratio::Config {
-                            max_number_of_releases_to_check: 3_usize,
-                            max_contributor_ratio: 0.8,
-                        }),
-                        min_number_of_releases_required: Some(
-                            min_number_of_releases_required::Config {
-                                min_number_of_releases: 3_usize,
-                                days: 180_u64,
-                            },
-                        ),
-                        max_issue_lifespan: Some(max_issue_lifespan::Config {
-                            max_lifespan_in_seconds: 2_592_000_usize,
-                            last_issues: 300,
-                        }),
-                        max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
-                            max_lifespan_in_seconds: 2_592_000_usize,
-                            last_pull_requests: 300,
-                        }),
-                    },
+        assert_eq!(
+            config,
+            Config {
+                default_policies: Policies {
+                    contributors_ratio: None,
+                    min_number_of_releases_required: None,
+                    max_issue_lifespan: None,
+                    max_pull_request_lifespan: None,
                 },
-                DependencyConfiguration {
-                    name: "bar".to_string(),
-                    policies: Policies {
-                        contributors_ratio: Some(contributors_ratio::Config {
-                            max_number_of_releases_to_check: 5_usize,
-                            max_contributor_ratio: 0.5,
-                        }),
-                        min_number_of_releases_required: None,
-                        max_issue_lifespan: None,
-                        max_pull_request_lifespan: None,
+                dependency_config: vec![
+                    DependencyConfiguration {
+                        name: "foo".to_string(),
+                        policies: Policies {
+                            contributors_ratio: Some(contributors_ratio::Config {
+                                max_number_of_releases_to_check: 3_usize,
+                                max_contributor_ratio: 0.8,
+                            }),
+                            min_number_of_releases_required: Some(
+                                min_number_of_releases_required::Config {
+                                    min_number_of_releases: 3_usize,
+                                    days: 180_u64,
+                                },
+                            ),
+                            max_issue_lifespan: Some(max_issue_lifespan::Config {
+                                max_lifespan_in_seconds: 2_592_000_usize,
+                                last_issues: 300,
+                            }),
+                            max_pull_request_lifespan: Some(max_pull_request_lifespan::Config {
+                                max_lifespan_in_seconds: 2_592_000_usize,
+                                last_pull_requests: 300,
+                            }),
+                        },
                     },
-                },
-            ],
-        }));
+                    DependencyConfiguration {
+                        name: "bar".to_string(),
+                        policies: Policies {
+                            contributors_ratio: Some(contributors_ratio::Config {
+                                max_number_of_releases_to_check: 5_usize,
+                                max_contributor_ratio: 0.5,
+                            }),
+                            min_number_of_releases_required: None,
+                            max_issue_lifespan: None,
+                            max_pull_request_lifespan: None,
+                        },
+                    },
+                ],
+            }
+        );
     }
 
     fn config_example_for_specific_policy() -> &'static [u8] {
