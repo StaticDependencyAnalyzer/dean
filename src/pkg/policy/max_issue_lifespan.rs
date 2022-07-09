@@ -48,9 +48,6 @@ impl MaxIssueLifespan {
 
 #[cfg(test)]
 mod tests {
-    use expects::matcher::equal;
-    use expects::Subject;
-
     use super::super::{ContributionDataRetriever, MockContributionDataRetriever, Policy};
     use super::*;
     use crate::pkg::Repository::GitHub;
@@ -70,10 +67,10 @@ mod tests {
         let issue_lifespan = MaxIssueLifespan::new(retriever, max_allowed_issue_lifespan, 100);
 
         let evaluation = issue_lifespan.evaluate(&dependency());
-        evaluation.unwrap().should(equal(Evaluation::Pass(
-            "max_issue_lifespan".to_string(),
-            dependency(),
-        )));
+        assert_eq!(
+            evaluation.unwrap(),
+            Evaluation::Pass("max_issue_lifespan".to_string(), dependency(),)
+        );
     }
 
     #[test]
@@ -92,9 +89,9 @@ mod tests {
         let evaluation = issue_lifespan.evaluate(&dependency());
         match evaluation.unwrap() {
             Evaluation::Fail(policy, dep, reason, score) => {
-                policy.should(equal("max_issue_lifespan".to_string()));
-                dep.should(equal(dependency()));
-                reason.should(equal("the issue lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds"));
+                assert_eq!(policy, "max_issue_lifespan");
+                assert_eq!(dep, dependency());
+                assert_eq!(reason, "the issue lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds");
                 assert!((score - 1.02).abs() < f64::EPSILON);
             }
             Evaluation::Pass(_, _) => {

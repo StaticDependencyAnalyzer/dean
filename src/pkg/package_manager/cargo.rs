@@ -99,8 +99,6 @@ where
 
 #[cfg(test)]
 mod tests {
-    use expects::matcher::equal;
-    use expects::Subject;
     use mockall::predicate::eq;
 
     use super::*;
@@ -132,15 +130,18 @@ mod tests {
         let dependency_reader = DependencyReader::new(cargo_lock_file_contents(), retriever);
         let mut dependencies = dependency_reader.dependencies().unwrap();
 
-        dependencies.next().unwrap().should(equal(Dependency {
-            name: "serde".into(),
-            version: "1.0.137".into(),
-            latest_version: Some("1.0.138".into()),
-            repository: Repository::GitHub {
-                organization: "serde-rs".into(),
+        assert_eq!(
+            dependencies.next().unwrap(),
+            Dependency {
                 name: "serde".into(),
-            },
-        }));
+                version: "1.0.137".into(),
+                latest_version: Some("1.0.138".into()),
+                repository: Repository::GitHub {
+                    organization: "serde-rs".into(),
+                    name: "serde".into(),
+                },
+            }
+        );
     }
 
     fn cargo_lock_file_contents() -> &'static [u8] {

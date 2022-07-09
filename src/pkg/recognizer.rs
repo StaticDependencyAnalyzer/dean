@@ -22,49 +22,58 @@ impl PackageManager {
 
 #[cfg(test)]
 mod tests {
-    use expects::{
-        matcher::{be_none, be_some, equal},
-        Subject,
-    };
-
     use super::*;
 
     #[test]
     fn it_recognizes_the_npm_package_lock_file() {
-        PackageManager::from_filename("package-lock.json")
-            .should(be_some(equal(PackageManager::Npm)));
+        assert_eq!(
+            PackageManager::from_filename("package-lock.json").unwrap(),
+            PackageManager::Npm
+        );
     }
 
     #[test]
     fn it_recognizes_the_npm_package_lock_file_even_with_full_path() {
-        PackageManager::from_filename("/path/to/package-lock.json")
-            .should(be_some(equal(PackageManager::Npm)));
+        assert_eq!(
+            PackageManager::from_filename("/path/to/package-lock.json").unwrap(),
+            PackageManager::Npm
+        );
     }
 
     #[test]
     fn it_recognizes_the_cargo_package_lock_file() {
-        PackageManager::from_filename("Cargo.lock").should(be_some(equal(PackageManager::Cargo)));
+        assert_eq!(
+            PackageManager::from_filename("Cargo.lock").unwrap(),
+            PackageManager::Cargo
+        );
     }
 
     #[test]
     fn it_recognizes_the_cargo_package_lock_file_even_with_full_path() {
-        PackageManager::from_filename("/path/to/Cargo.lock")
-            .should(be_some(equal(PackageManager::Cargo)));
+        assert_eq!(
+            PackageManager::from_filename("/path/to/Cargo.lock").unwrap(),
+            PackageManager::Cargo
+        );
     }
 
     #[test]
     fn it_recognizes_the_yarn_package_lock_file() {
-        PackageManager::from_filename("yarn.lock").should(be_some(equal(PackageManager::Yarn)));
+        assert_eq!(
+            PackageManager::from_filename("yarn.lock").unwrap(),
+            PackageManager::Yarn
+        );
     }
 
     #[test]
     fn it_recognizes_the_yarn_package_lock_file_even_with_full_path() {
-        PackageManager::from_filename("/path/to/yarn.lock")
-            .should(be_some(equal(PackageManager::Yarn)));
+        assert_eq!(
+            PackageManager::from_filename("/path/to/yarn.lock").unwrap(),
+            PackageManager::Yarn
+        );
     }
 
     #[test]
     fn if_it_doesnt_recognize_the_package_manager_returns_none() {
-        PackageManager::from_filename("some-file-name").should(be_none());
+        assert!(PackageManager::from_filename("some-file-name").is_none());
     }
 }

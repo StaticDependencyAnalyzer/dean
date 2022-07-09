@@ -222,9 +222,6 @@ impl Repository {
 
 #[cfg(test)]
 mod tests {
-    use expects::matcher::{consist_of, contain_element, equal};
-    use expects::Subject;
-
     use super::*;
 
     #[test]
@@ -234,7 +231,7 @@ mod tests {
         let tags = repository.all_tags().unwrap();
 
         assert!(tags.len() >= 76);
-        tags.should(contain_element(Tag {
+        assert!(tags.contains(&Tag {
             name: "v1.4.2".to_string(),
             commit_id: "182d0d1ee933de46bf0b5a6ec269bafa77aba9a2".to_string(),
             commit_timestamp: 1_645_905_004,
@@ -245,24 +242,23 @@ mod tests {
     fn it_retrieves_commit_ids_for_each_tag_of_a_repository() {
         let repository = Repository::new("https://github.com/libgit2/libgit2").unwrap();
 
-        let commit_ids_for_tag = repository.commit_ids_for_each_tag().unwrap();
+        let commit_ids_for_each_tag = repository.commit_ids_for_each_tag().unwrap();
 
-        commit_ids_for_tag
-            .get("v1.4.2")
-            .unwrap()
-            .should(consist_of(&[
-                "43bfa124c844288a9e2e361e1122cc1cc51f1e8f".to_string(),
-                "5d9f2aff9423a0395fd909312e2cfd7085552fd8".to_string(),
-                "377ec9bfe7d84aad1ac23206144b7cdb7f867df2".to_string(),
-                "f2c5d1b105d07c3643d1af388715321bdcbd83db".to_string(),
-                "970c3c71cefd764857a57b6d9f04e147ec3114b6".to_string(),
+        assert_eq!(
+            commit_ids_for_each_tag.get("v1.4.2").unwrap(),
+            &[
                 "182d0d1ee933de46bf0b5a6ec269bafa77aba9a2".to_string(),
-            ]));
-        commit_ids_for_tag
-            .get("v1.4.0")
-            .unwrap()
-            .len()
-            .should(equal(302_usize));
+                "970c3c71cefd764857a57b6d9f04e147ec3114b6".to_string(),
+                "f2c5d1b105d07c3643d1af388715321bdcbd83db".to_string(),
+                "377ec9bfe7d84aad1ac23206144b7cdb7f867df2".to_string(),
+                "5d9f2aff9423a0395fd909312e2cfd7085552fd8".to_string(),
+                "43bfa124c844288a9e2e361e1122cc1cc51f1e8f".to_string(),
+            ]
+        );
+        assert_eq!(
+            commit_ids_for_each_tag.get("v1.4.0").unwrap().len(),
+            302_usize
+        );
     }
 
     #[test]
@@ -271,20 +267,17 @@ mod tests {
 
         let commits_for_each_tag = repository.commits_for_each_tag().unwrap();
 
-        commits_for_each_tag
+        assert!(commits_for_each_tag
             .get("v1.4.2")
             .unwrap()
-            .should(contain_element(Commit {
+            .contains(&Commit {
                 id: "43bfa124c844288a9e2e361e1122cc1cc51f1e8f".to_string(),
                 author_name: "Carlos Martín Nieto".to_string(),
                 author_email: "carlosmn@github.com".to_string(),
                 creation_timestamp: 1_645_898_340,
             }));
-        commits_for_each_tag
-            .get("v1.4.2")
-            .unwrap()
-            .len()
-            .should(equal(6_usize));
+
+        assert_eq!(commits_for_each_tag.get("v1.4.2").unwrap().len(), 6_usize);
     }
 
     #[test]
@@ -311,10 +304,10 @@ mod tests {
                 < 1
         );
 
-        commits_for_each_tag
+        assert!(commits_for_each_tag
             .get("v1.4.2")
             .unwrap()
-            .should(contain_element(Commit {
+            .contains(&Commit {
                 id: "43bfa124c844288a9e2e361e1122cc1cc51f1e8f".to_string(),
                 author_name: "Carlos Martín Nieto".to_string(),
                 author_email: "carlosmn@github.com".to_string(),
