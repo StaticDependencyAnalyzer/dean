@@ -90,7 +90,7 @@ mod tests {
 
         let result = retriever.latest_version("serde");
 
-        result.unwrap().should(equal("1.0.137"));
+        result.unwrap().should(equal("1.0.138"));
     }
 
     #[test]
