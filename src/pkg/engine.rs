@@ -37,7 +37,7 @@ fn some_options_first<T>(a: &Option<T>, b: &Option<T>) -> Ordering {
     }
 }
 
-impl<'a> PolicyExecutor {
+impl PolicyExecutor {
     pub fn new(execution_configs: Vec<ExecutionConfig>) -> Self {
         Self {
             execution_configs: execution_configs

@@ -45,7 +45,6 @@ impl CommitRetriever for RepositoryRetriever {
             .get_or_try_init(repository_url.to_string(), 1, |url| {
                 self.repository_result_from_url(url)
             })
-            .map_err(|e: Box<dyn Error>| e)
             .map(|handle| handle.value().commits_for_each_tag.clone())
     }
 
@@ -54,7 +53,6 @@ impl CommitRetriever for RepositoryRetriever {
             .get_or_try_init(repository_url.to_string(), 1, |url| {
                 self.repository_result_from_url(url)
             })
-            .map_err(|e: Box<dyn Error>| e)
             .map(|handle| handle.value().all_tags.clone())
     }
 }
