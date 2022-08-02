@@ -1,6 +1,6 @@
 # DEAN
 
-**Static (DE)pendency (AN)alyzer*+
+**Static (DE)pendency (AN)alyzer**
 
 ![https://github.com/StaticDependencyAnalyzer/dean/actions/workflows/ci.yml](https://github.com/StaticDependencyAnalyzer/dean/actions/workflows/ci.yml/badge.svg?branch=master)
 ![https://opensource.org/licenses/AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
