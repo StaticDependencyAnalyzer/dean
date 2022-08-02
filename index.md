@@ -1,14 +1,9 @@
-<h1 align="center" style="border-bottom: none">
-    <b>
-        DEAN<br>
-    </b>
-    Static (DE)pendency (AN)alyzer <br>
-</h1>
+# DEAN
 
-<p align="center">
-<a href="https://github.com/StaticDependencyAnalyzer/dean/actions/workflows/ci.yml"><img src=https://github.com/StaticDependencyAnalyzer/dean/actions/workflows/ci.yml/badge.svg?branch=master" /></a>
-<a href="https://opensource.org/licenses/AGPL-3.0"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0"></a>
-</p>
+**Static (DE)pendency (AN)alyzer*+
+
+![https://github.com/StaticDependencyAnalyzer/dean/actions/workflows/ci.yml](https://github.com/StaticDependencyAnalyzer/dean/actions/workflows/ci.yml/badge.svg?branch=master)
+![https://opensource.org/licenses/AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue)
 
 ## Why dean?
 
