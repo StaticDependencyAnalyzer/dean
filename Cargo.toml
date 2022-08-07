@@ -1,6 +1,6 @@
 [package]
 name = "dean"
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 authors = ["fede@federico.barcelona"]
 description = "Static (De)pendency (An)alyzer"
@@ -28,17 +28,17 @@ regex = "1.5.5"
 rayon = "1.5.1"
 log = "0.4.14"
 simple_logger = "2.1.0"
-git2 = "0.14.0"
+git2 = { version = "0.15.0", features = ["vendored-openssl"] }
 tempfile = "3.3.0"
 anyhow = "1.0.56"
 itertools = "0.10.3"
-serde_yaml = "0.8.23"
+serde_yaml = "0.9.4"
 dirs-next = "2.0.0"
 concurrent_lru = "0.2.0"
 lazy_static = "1.4.0"
 csv = "1.1.6"
 time = { version = "0.3.9", features = ["parsing"] }
-rusqlite = "0.27.0"
+rusqlite = { version = "0.28.0", features = ["bundled"] }
 
 [dev-dependencies]
 mockall = "0.11.0"
