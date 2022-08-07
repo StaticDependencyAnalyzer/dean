@@ -53,7 +53,12 @@ impl Config {
     pub fn load_from_reader(
         reader: &mut dyn std::io::Read,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        let result = serde_yaml::from_reader(reader)?;
+        let mut contents = String::new();
+        reader.read_to_string(&mut contents)?;
+        if contents.is_empty() {
+            return Err("the content of the config file is empty".into());
+        }
+        let result = serde_yaml::from_str(&contents)?;
         Ok(result)
     }
 
@@ -168,7 +173,6 @@ mod tests {
         assert_eq!(
             config_string,
             "\
----
 default_policies:
   contributors_ratio:
     max_number_of_releases_to_check: 3
