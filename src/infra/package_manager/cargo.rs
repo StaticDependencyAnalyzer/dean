@@ -87,7 +87,7 @@ mod tests {
 
         let result = retriever.latest_version("serde");
 
-        assert_eq!(result.unwrap(), "1.0.138");
+        assert_eq!(result.unwrap(), "1.0.142");
     }
 
     #[test]
