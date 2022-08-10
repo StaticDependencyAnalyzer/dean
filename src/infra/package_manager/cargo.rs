@@ -82,12 +82,12 @@ mod tests {
     use crate::pkg::InfoRetriever as _;
 
     #[test]
-    fn it_retrieves_the_latest_version_of_serde() {
+    fn it_retrieves_the_latest_version_of_yaml_rust() {
         let retriever = InfoRetriever::default();
 
-        let result = retriever.latest_version("serde");
+        let result = retriever.latest_version("yaml-rust");
 
-        assert_eq!(result.unwrap(), "1.0.142");
+        assert_eq!(result.unwrap(), "0.4.5");
     }
 
     #[test]
