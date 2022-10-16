@@ -63,7 +63,7 @@ where
         let dependency_info_tuples = dependency_lines_grouped
             .into_iter()
             .map(|lines| {
-                let dependency_line: String = lines.get(0).unwrap().replace('\"', "");
+                let dependency_line: String = lines.first().unwrap().replace('\"', "");
                 let mut dependency_name = dependency_line.split_once('@').unwrap().0.to_owned();
                 if dependency_name.is_empty() {
                     dependency_name = format!(
@@ -180,6 +180,6 @@ mod tests {
     }
 
     fn yarn_lock_file() -> &'static [u8] {
-        return include_bytes!("../../../tests/fixtures/yarn.lock");
+        include_bytes!("../../../tests/fixtures/yarn.lock")
     }
 }

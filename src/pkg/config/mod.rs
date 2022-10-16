@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tokio::io::AsyncReadExt;
 
 pub mod contributors_ratio;
 pub mod max_issue_lifespan;
@@ -50,11 +51,11 @@ pub struct Policies {
 }
 
 impl Config {
-    pub fn load_from_reader(
-        reader: &mut dyn std::io::Read,
+    pub async fn load_from_reader(
+        reader: &mut (dyn tokio::io::AsyncRead + std::marker::Unpin),
     ) -> Result<Self, Box<dyn std::error::Error>> {
         let mut contents = String::new();
-        reader.read_to_string(&mut contents)?;
+        reader.read_to_string(&mut contents).await?;
         if contents.is_empty() {
             return Err("the content of the config file is empty".into());
         }
@@ -72,10 +73,10 @@ impl Config {
         Ok(home.join(".config/dean.yaml"))
     }
 
-    pub fn load_from_default_file_path_or_default() -> Self {
+    pub async fn load_from_default_file_path_or_default() -> Self {
         match Self::default_config_file() {
-            Ok(config_file) => match std::fs::File::open(&config_file) {
-                Ok(mut file) => match Config::load_from_reader(&mut file) {
+            Ok(config_file) => match tokio::fs::File::open(&config_file).await {
+                Ok(mut file) => match Config::load_from_reader(&mut file).await {
                     Ok(config) => {
                         return config;
                     }
@@ -104,9 +105,11 @@ impl Config {
 mod tests {
     use super::*;
 
-    #[test]
-    fn it_loads_the_default_config_from_an_empty_file() {
-        let config: Config = Config::load_from_reader(&mut "".as_bytes()).unwrap_or_default();
+    #[tokio::test]
+    async fn it_loads_the_default_config_from_an_empty_file() {
+        let config: Config = Config::load_from_reader(&mut "".as_bytes())
+            .await
+            .unwrap_or_default();
         assert_eq!(
             config,
             Config {
@@ -135,9 +138,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn it_loads_the_config_from_reader() {
-        let config: Config = Config::load_from_reader(&mut config_example()).unwrap();
+    #[tokio::test]
+    async fn it_loads_the_config_from_reader() {
+        let config: Config = Config::load_from_reader(&mut config_example())
+            .await
+            .unwrap();
         assert_eq!(
             config,
             Config {
@@ -191,10 +196,11 @@ dependency_config: []
         );
     }
 
-    #[test]
-    fn it_loads_the_config_with_a_missing_policy() {
-        let config: Config =
-            Config::load_from_reader(&mut config_example_with_missing_policy()).unwrap();
+    #[tokio::test]
+    async fn it_loads_the_config_with_a_missing_policy() {
+        let config: Config = Config::load_from_reader(&mut config_example_with_missing_policy())
+            .await
+            .unwrap();
         assert_eq!(
             config,
             Config {
@@ -212,9 +218,11 @@ dependency_config: []
         );
     }
 
-    #[test]
-    fn it_loads_the_config_for_a_specific_policy() {
-        let config = Config::load_from_reader(&mut config_example_for_specific_policy()).unwrap();
+    #[tokio::test]
+    async fn it_loads_the_config_for_a_specific_policy() {
+        let config = Config::load_from_reader(&mut config_example_for_specific_policy())
+            .await
+            .unwrap();
         assert_eq!(
             config,
             Config {

@@ -25,7 +25,7 @@ use crate::pkg::{Dependency, ResultReporter};
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
     load_logger()?;
-    let config = Rc::new(Config::load_from_default_file_path_or_default());
+    let config = Rc::new(Config::load_from_default_file_path_or_default().await);
     let mut factory = Factory::new(config.clone());
 
     match &args.command {
