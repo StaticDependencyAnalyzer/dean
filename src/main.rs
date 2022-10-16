@@ -21,7 +21,8 @@ use crate::pkg::iter::ToSequential;
 use crate::pkg::policy::{Evaluation, Policy};
 use crate::pkg::{Dependency, ResultReporter};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args();
     load_logger()?;
     let config = Rc::new(Config::load_from_default_file_path_or_default());
