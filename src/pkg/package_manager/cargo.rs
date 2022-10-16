@@ -1,6 +1,9 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use log::{error, info};
+use tokio::io::AsyncReadExt;
+use tokio::sync::Mutex;
 use toml::Value;
 
 use crate::pkg::Repository;
@@ -8,24 +11,20 @@ use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever};
 
 pub struct DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
     cargo_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
 }
 
+#[async_trait]
 impl<T> DependencyRetriever for DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
-    fn dependencies(&self) -> Result<Self::Itr, String> {
-        let mut contents = Vec::new();
-        self.reader
-            .lock()
-            .unwrap()
-            .read_to_end(&mut contents)
-            .map_err(|e| e.to_string())?;
+    type Itr = Box<dyn Iterator<Item = Dependency>>;
+    async fn dependencies(&self) -> Result<Self::Itr, String> {
+        let contents = self.contents_from_reader().await?;
         let result: Value = toml::from_slice(&contents).map_err(|e| e.to_string())?;
 
         let packages = result
@@ -84,7 +83,23 @@ where
 
 impl<T> DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: Unpin + tokio::io::AsyncRead + Send,
+{
+    async fn contents_from_reader(&self) -> Result<Vec<u8>, String> {
+        let mut contents = Vec::new();
+        self.reader
+            .lock()
+            .await
+            .read_to_end(&mut contents)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(contents)
+    }
+}
+
+impl<T> DependencyReader<T>
+where
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
     pub fn new<R>(reader: T, retriever: R) -> Self
     where
@@ -105,8 +120,8 @@ mod tests {
     use crate::pkg::{MockInfoRetriever, Repository};
     use crate::Dependency;
 
-    #[test]
-    fn retrieves_all_dependencies_from_cargo() {
+    #[tokio::test]
+    async fn retrieves_all_dependencies_from_cargo() {
         let retriever = {
             let mut retriever = Box::new(MockInfoRetriever::new());
             retriever
@@ -128,7 +143,7 @@ mod tests {
         };
 
         let dependency_reader = DependencyReader::new(cargo_lock_file_contents(), retriever);
-        let mut dependencies = dependency_reader.dependencies().unwrap();
+        let mut dependencies = dependency_reader.dependencies().await.unwrap();
 
         assert_eq!(
             dependencies.next().unwrap(),

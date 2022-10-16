@@ -8,16 +8,15 @@ mod lazy;
 mod pkg;
 
 use std::error::Error;
-use std::fs::File;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use log::{error, info, warn, LevelFilter};
-use rayon::prelude::*;
+use tokio::fs::File;
 
 use crate::cmd::{parse_args, Commands, ConfigCommands};
 use crate::factory::Factory;
 use crate::pkg::config::Config;
-use crate::pkg::iter::ToSequential;
 use crate::pkg::policy::{Evaluation, Policy};
 use crate::pkg::{Dependency, ResultReporter};
 
@@ -30,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match &args.command {
         Commands::Scan { lock_file } => {
-            scan_lock_file(&mut factory, lock_file)?;
+            scan_lock_file(&mut factory, lock_file).await?;
         }
         Commands::Config { command } => match command {
             ConfigCommands::Show => {
@@ -42,43 +41,51 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box<dyn Error>> {
+async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box<dyn Error>> {
     let lock_file = File::open(lock_file_name)
+        .await
         .map_err(|err| format!("file {} could not be opened: {}", lock_file_name, err))?;
     let mut reporter = Factory::result_reporter();
-    let dependency_reader = factory.dependency_reader(lock_file, lock_file_name);
+    let dependency_reader = factory.dependency_reader(lock_file, lock_file_name).await;
 
-    let engine = factory.engine()?;
+    let engine = Arc::new(factory.engine()?);
 
-    let results = dependency_reader.par_bridge().map(move |dep| {
-        let evaluations = engine.evaluate(&dep);
-        if let Err(err) = evaluations {
-            error!("error evaluating dependency {}: {}", dep.name, err);
-            return None;
-        }
+    let async_results = dependency_reader.map(move |dep| {
+        let engine = engine.clone();
+        tokio::spawn(async move {
+            let evaluations = engine.evaluate(&dep);
+            if let Err(err) = evaluations {
+                error!("error evaluating dependency {}: {}", dep.name, err);
+                return None;
+            }
 
-        for evaluation in evaluations.as_ref().unwrap() {
-            match evaluation {
-                Evaluation::Pass(policy, dep) => {
-                    info!(
+            for evaluation in evaluations.as_ref().unwrap() {
+                match evaluation {
+                    Evaluation::Pass(policy, dep) => {
+                        info!(
                         "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is okay",
                         dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy
                     );
-                }
-                Evaluation::Fail(policy, dep, reason, score) => {
-                    warn!(
+                    }
+                    Evaluation::Fail(policy, dep, reason, score) => {
+                        warn!(
                         "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is not okay: {} (score: {})",
                         dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy, reason, score,
                     );
+                    }
                 }
             }
-        }
 
-        Some(evaluations.unwrap())
+            Some(evaluations.unwrap())
+        })
     });
+    let mut results = Vec::new();
+    for async_result in async_results {
+        results.push(async_result.await);
+    }
 
-    let sequential_results = results.to_seq(1000).flatten().flatten();
-    reporter.report_results(sequential_results)?;
+    let sequential_results = results.into_iter().flatten().flatten().flatten();
+    reporter.report_results(sequential_results).await?;
 
     Ok(())
 }

@@ -1,14 +1,17 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use itertools::Itertools;
 use log::info;
+use tokio::io::AsyncReadExt;
+use tokio::sync::Mutex;
 
 use crate::pkg::{DependencyRetriever, InfoRetriever, Repository};
 use crate::Dependency;
 
 pub struct DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin,
 {
     npm_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
@@ -16,7 +19,7 @@ where
 
 impl<T> DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin,
 {
     pub fn new<R>(reader: T, retriever: R) -> Self
     where
@@ -29,22 +32,15 @@ where
     }
 }
 
+#[async_trait]
 impl<T> DependencyRetriever for DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
+    type Itr = Box<dyn Iterator<Item = Dependency>>;
 
-    fn dependencies(&self) -> Result<Self::Itr, String> {
-        let content = {
-            let mut bytes = Vec::new();
-            self.reader
-                .lock()
-                .unwrap()
-                .read_to_end(&mut bytes)
-                .map_err(|e| e.to_string())?;
-            String::from_utf8_lossy(&bytes).into_owned()
-        };
+    async fn dependencies(&self) -> Result<Self::Itr, String> {
+        let content = self.content_from_reader().await?;
 
         let not_comment_lines = content.lines().filter(|line| !line.trim().starts_with('#'));
 
@@ -112,6 +108,22 @@ where
     }
 }
 
+impl<T> DependencyReader<T>
+where
+    T: Unpin + tokio::io::AsyncRead + Send,
+{
+    async fn content_from_reader(&self) -> Result<String, String> {
+        let mut bytes = Vec::new();
+        self.reader
+            .lock()
+            .await
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use mockall::predicate::eq;
@@ -119,8 +131,8 @@ mod tests {
     use super::*;
     use crate::pkg::{MockInfoRetriever, Repository};
 
-    #[test]
-    fn it_retrieves_all_the_dependencies() {
+    #[tokio::test]
+    async fn it_retrieves_all_the_dependencies() {
         let retriever: Box<dyn InfoRetriever> = {
             let mut retriever = Box::new(MockInfoRetriever::new());
             retriever
@@ -146,7 +158,7 @@ mod tests {
         };
 
         let dependency_reader = DependencyReader::new(yarn_lock_file(), retriever);
-        let dependencies = dependency_reader.dependencies();
+        let dependencies = dependency_reader.dependencies().await;
 
         let deps = dependencies.unwrap().collect::<Vec<_>>();
         let webpack_dependency = deps.iter().find(|dep| dep.name == "webpack").unwrap();

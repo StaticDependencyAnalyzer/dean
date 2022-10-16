@@ -1,24 +1,25 @@
-use std::cell::RefCell;
-use std::io::Write;
-use std::rc::Rc;
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use itertools::Itertools;
+use tokio::io::AsyncWrite;
+use tokio::sync::Mutex;
 
 use crate::pkg::ResultReporter;
 use crate::Evaluation;
 
 pub struct Reporter<T>
 where
-    T: Write,
+    T: AsyncWrite,
 {
-    writer: Rc<RefCell<T>>,
+    writer: Arc<Mutex<T>>,
 }
 
 impl<T> Reporter<T>
 where
-    T: Write,
+    T: AsyncWrite,
 {
-    pub fn new(writer: Rc<RefCell<T>>) -> Self {
+    pub fn new(writer: Arc<Mutex<T>>) -> Self {
         Self { writer }
     }
 
@@ -29,16 +30,19 @@ where
     }
 }
 
+#[async_trait]
 impl<F> ResultReporter for Reporter<F>
 where
-    F: Write,
+    F: AsyncWrite + Unpin + Send,
 {
-    fn report_results<T>(&mut self, result: T) -> Result<(), String>
+    async fn report_results<T>(&mut self, result: T) -> Result<(), String>
     where
-        T: IntoIterator<Item = Evaluation>,
+        T: IntoIterator<Item = Evaluation> + Send,
     {
-        let wtr = &mut *self.writer.borrow_mut();
-        let mut writer = csv::Writer::from_writer(wtr);
+        let arc = self.writer.clone();
+        let wtr = &mut *arc.lock().await;
+
+        let mut writer = csv_async::AsyncWriter::from_writer(wtr);
 
         let evaluations: Vec<Evaluation> = result.into_iter().collect();
         let policy_names: Vec<_> = evaluations
@@ -55,6 +59,7 @@ where
 
         writer
             .write_record(Self::headers(&policy_names))
+            .await
             .map_err(|e| format!("unable to write record: {}", e))?;
 
         for dependency in dependencies {
@@ -100,6 +105,7 @@ where
 
             writer
                 .write_record(row)
+                .await
                 .map_err(|e| format!("unable to write record: {}", e))?;
         }
 
@@ -111,15 +117,16 @@ where
 mod tests {
     use std::cell::RefCell;
     use std::io::Cursor;
+    use std::ops::Deref;
     use std::rc::Rc;
 
     use super::*;
     use crate::pkg::Repository::GitHub;
     use crate::{Dependency, Evaluation};
 
-    #[test]
-    fn it_reports_to_csv_the_results() {
-        let buffer = Rc::new(RefCell::new(Cursor::new(Vec::new())));
+    #[tokio::test]
+    async fn it_reports_to_csv_the_results() {
+        let buffer = Arc::new(Mutex::new(Cursor::new(Vec::new())));
         let mut reporter = Reporter::new(buffer.clone());
 
         let evaluations = vec![
@@ -165,10 +172,10 @@ mod tests {
             ),
         ];
 
-        reporter.report_results(evaluations).unwrap();
+        reporter.report_results(evaluations).await.unwrap();
 
         assert_eq!(
-            String::from_utf8_lossy(buffer.borrow().get_ref()),
+            String::from_utf8_lossy(buffer.lock().await.get_ref()),
             r#"name,version,latest_version,repository,score,policy1,policy2
 some_dep1,1.2.3,1.2.3,https://github.com/some_org/some_repo,0,OK,Not evaluated
 some_dep2,2.3.4,2.4.5,https://github.com/some_org/some_repo,2.5,failed because a reason,failed because a reason

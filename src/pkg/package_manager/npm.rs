@@ -1,26 +1,39 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use async_trait::async_trait;
 use log::{error, info};
 use serde_json::Value;
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::sync::Mutex;
 
 use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
 pub struct DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: AsyncRead + Unpin + Send,
 {
     npm_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
 }
 
+#[async_trait]
 impl<T> DependencyRetriever for DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
-    fn dependencies(&self) -> Result<Self::Itr, String> {
-        let result: Value = serde_json::from_reader(&mut *self.reader.lock().unwrap())
-            .map_err(|e| e.to_string())?;
+    type Itr = Box<dyn Iterator<Item = Dependency>>;
+    async fn dependencies(&self) -> Result<Self::Itr, String> {
+        let content = {
+            let mut content = String::new();
+            self.reader
+                .lock()
+                .await
+                .read_to_string(&mut content)
+                .await
+                .map_err(|e| e.to_string())?;
+            content
+        };
+        let result: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
         let value = result["dependencies"].clone();
         if !value.is_object() {
@@ -62,7 +75,7 @@ where
 
 impl<T> DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: AsyncRead + Unpin + Send,
 {
     pub fn new<R>(reader: T, retriever: R) -> Self
     where
@@ -82,8 +95,8 @@ mod tests {
     use super::*;
     use crate::pkg::{MockInfoRetriever, Repository};
 
-    #[test]
-    fn retrieves_all_dependencies() {
+    #[tokio::test]
+    async fn retrieves_all_dependencies() {
         let retriever = {
             let mut retriever = Box::new(MockInfoRetriever::new());
             retriever
@@ -105,7 +118,7 @@ mod tests {
         };
 
         let dependency_reader = DependencyReader::new(npm_package_lock(), retriever);
-        let dependencies = dependency_reader.dependencies();
+        let dependencies = dependency_reader.dependencies().await;
 
         assert_eq!(
             dependencies.unwrap().next().unwrap(),

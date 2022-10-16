@@ -1,5 +1,6 @@
 use std::fmt::{Display, Formatter};
 
+use async_trait::async_trait;
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -8,7 +9,6 @@ use crate::Evaluation;
 pub mod config;
 pub mod csv;
 pub mod engine;
-pub mod iter;
 pub mod package_manager;
 pub mod policy;
 pub mod recognizer;
@@ -19,15 +19,17 @@ pub trait InfoRetriever: Sync + Send {
     fn repository(&self, dependency: &str) -> Result<Repository, String>;
 }
 
-pub trait DependencyRetriever: Sync + Send {
+#[async_trait]
+pub trait DependencyRetriever {
     type Itr: IntoIterator<Item = Dependency>;
-    fn dependencies(&self) -> Result<Self::Itr, String>;
+    async fn dependencies(&self) -> Result<Self::Itr, String>;
 }
 
+#[async_trait]
 pub trait ResultReporter {
-    fn report_results<T>(&mut self, result: T) -> Result<(), String>
+    async fn report_results<T>(&mut self, result: T) -> Result<(), String>
     where
-        T: IntoIterator<Item = Evaluation>;
+        T: IntoIterator<Item = Evaluation> + Send;
 }
 
 #[derive(Clone, PartialEq, Debug, Eq, Hash)]

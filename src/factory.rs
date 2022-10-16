@@ -1,11 +1,11 @@
-use std::cell::RefCell;
 use std::error::Error;
-use std::fs::File;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use log::info;
+use tokio::fs::File;
+use tokio::sync::Mutex;
 
 use crate::infra::cached_issue_client::IssueStore;
 use crate::infra::clock::Clock;
@@ -43,27 +43,30 @@ pub struct Factory {
 const DAYS_TO_SECONDS: u64 = 86400;
 
 impl Factory {
-    pub fn dependency_reader<'a, T: std::io::Read + Send + 'a>(
+    pub async fn dependency_reader<'a, T: tokio::io::AsyncRead + Unpin + Send + 'a>(
         &self,
         reader: T,
         lock_file: &str,
-    ) -> Box<dyn Iterator<Item = Dependency> + Send + 'a> {
+    ) -> Box<dyn Iterator<Item = Dependency> + 'a> {
         let retriever = self.info_retriever(lock_file);
 
         match Self::package_manager(lock_file) {
             PackageManager::Npm => Box::new(
                 npm::DependencyReader::new(reader, retriever)
                     .dependencies()
+                    .await
                     .unwrap(),
             ),
             PackageManager::Cargo => Box::new(
                 cargo::DependencyReader::new(reader, retriever)
                     .dependencies()
+                    .await
                     .unwrap(),
             ),
             PackageManager::Yarn => Box::new(
                 yarn::DependencyReader::new(reader, retriever)
                     .dependencies()
+                    .await
                     .unwrap(),
             ),
         }
@@ -225,13 +228,16 @@ impl Factory {
     }
 
     pub fn result_reporter() -> Reporter<File> {
-        let reader = File::options()
+        let reader = std::fs::File::options()
             .create(true)
             .write(true)
             .truncate(true)
             .open("result.csv")
             .expect("unable to open result.csv");
-        Reporter::new(Rc::new(RefCell::new(reader)))
+
+        let reader = File::from_std(reader);
+
+        Reporter::new(Arc::new(Mutex::new(reader)))
     }
 
     pub fn engine(&mut self) -> Result<PolicyExecutor, Box<dyn Error>> {
@@ -243,7 +249,7 @@ impl Factory {
             .get(|| {
                 let connection =
                     rusqlite::Connection::open("dean.db3").expect("unable to open dean.db3");
-                let commit_store = commit_store::Sqlite::new(Mutex::new(connection));
+                let commit_store = commit_store::Sqlite::new(std::sync::Mutex::new(connection));
                 commit_store.init().expect("unable to init commit store");
 
                 Arc::new(commit_store)
@@ -256,7 +262,7 @@ impl Factory {
             .get(|| {
                 let connection =
                     rusqlite::Connection::open("dean.db3").expect("unable to open dean.db3");
-                let issue_store = issue_store::Sqlite::new(Mutex::new(connection));
+                let issue_store = issue_store::Sqlite::new(std::sync::Mutex::new(connection));
                 issue_store.init().expect("unable to init issue store");
 
                 Arc::new(issue_store)
