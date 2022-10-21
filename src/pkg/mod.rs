@@ -1,6 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use async_trait::async_trait;
+use futures_util::Stream;
 use lazy_static::lazy_static;
 use regex::Regex;
 
@@ -14,14 +15,15 @@ pub mod policy;
 pub mod recognizer;
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait InfoRetriever: Sync + Send {
-    fn latest_version(&self, dependency: &str) -> Result<String, String>;
-    fn repository(&self, dependency: &str) -> Result<Repository, String>;
+    async fn latest_version(&self, dependency: &str) -> Result<String, String>;
+    async fn repository(&self, dependency: &str) -> Result<Repository, String>;
 }
 
 #[async_trait]
 pub trait DependencyRetriever {
-    type Itr: IntoIterator<Item = Dependency>;
+    type Itr: Stream<Item = Dependency> + Unpin + Send;
     async fn dependencies(&self) -> Result<Self::Itr, String>;
 }
 

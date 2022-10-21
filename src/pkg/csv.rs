@@ -115,10 +115,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
     use std::io::Cursor;
-    use std::ops::Deref;
-    use std::rc::Rc;
 
     use super::*;
     use crate::pkg::Repository::GitHub;

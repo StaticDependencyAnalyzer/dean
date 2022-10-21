@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use log::{error, info};
+use log::error;
 use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::Mutex;
 
-use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
+use crate::pkg::package_manager::cargo::DependencyStream;
+use crate::pkg::{DependencyRetriever, InfoRetriever};
 
 pub struct DependencyReader<T>
 where
@@ -21,7 +22,7 @@ impl<T> DependencyRetriever for DependencyReader<T>
 where
     T: AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency>>;
+    type Itr = DependencyStream;
     async fn dependencies(&self) -> Result<Self::Itr, String> {
         let content = {
             let mut content = String::new();
@@ -54,22 +55,13 @@ where
                 }
             });
 
-        let npm_info_retriever = self.npm_info_retriever.clone();
-        let dependencies = deps.map(move |(name, version)| {
-            let retriever = npm_info_retriever.clone();
-            info!(
-                target: "dean::npm-dependency-retriever",
-                "retrieving information for dependency [name={}, version={}]",
-                name, version
-            );
-            Dependency {
-                latest_version: retriever.latest_version(&name).ok(),
-                repository: retriever.repository(&name).unwrap_or(Repository::Unknown),
-                name,
-                version,
-            }
-        });
-        Ok(Box::new(dependencies))
+        Ok(DependencyStream {
+            name_and_version_iter: deps.collect(),
+            next_name_and_version: None,
+            latest_version_retrieved: None,
+            latest_repository_retrieved: None,
+            retriever: self.npm_info_retriever.clone(),
+        })
     }
 }
 
@@ -90,7 +82,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    use futures_util::StreamExt;
     use mockall::predicate::eq;
+    use crate::Dependency;
 
     use super::*;
     use crate::pkg::{MockInfoRetriever, Repository};
@@ -121,7 +115,7 @@ mod tests {
         let dependencies = dependency_reader.dependencies().await;
 
         assert_eq!(
-            dependencies.unwrap().next().unwrap(),
+            dependencies.unwrap().next().await.unwrap(),
             Dependency {
                 name: "colors".into(),
                 version: "1.4.0".into(),

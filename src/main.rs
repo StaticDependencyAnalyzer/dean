@@ -1,5 +1,5 @@
 #![deny(clippy::pedantic, clippy::style)]
-#![warn(unused)]
+#![deny(unused)]
 
 mod cmd;
 mod factory;
@@ -13,6 +13,7 @@ use std::sync::Arc;
 
 use log::{error, info, warn, LevelFilter};
 use tokio::fs::File;
+use tokio_stream::StreamExt;
 
 use crate::cmd::{parse_args, Commands, ConfigCommands};
 use crate::factory::Factory;
@@ -46,14 +47,16 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
         .await
         .map_err(|err| format!("file {} could not be opened: {}", lock_file_name, err))?;
     let mut reporter = Factory::result_reporter();
-    let dependency_reader = factory.dependency_reader(lock_file, lock_file_name).await;
+    let mut dependency_reader = factory.dependency_reader(lock_file, lock_file_name).await;
 
     let engine = Arc::new(factory.engine()?);
 
-    let async_results = dependency_reader.map(move |dep| {
+    let mut async_results = Vec::new();
+
+    while let Some(dep) = dependency_reader.next().await {
         let engine = engine.clone();
-        tokio::spawn(async move {
-            let evaluations = engine.evaluate(&dep);
+        let task = tokio::spawn(async move {
+            let evaluations = engine.evaluate(&dep).await;
             if let Err(err) = evaluations {
                 error!("error evaluating dependency {}: {}", dep.name, err);
                 return None;
@@ -77,8 +80,10 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
             }
 
             Some(evaluations.unwrap())
-        })
-    });
+        });
+        async_results.push(task);
+    }
+
     let mut results = Vec::new();
     for async_result in async_results {
         results.push(async_result.await);

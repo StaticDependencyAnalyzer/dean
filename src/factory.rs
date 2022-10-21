@@ -6,6 +6,7 @@ use std::time::Duration;
 use log::info;
 use tokio::fs::File;
 use tokio::sync::Mutex;
+use tokio_stream::Stream;
 
 use crate::infra::cached_issue_client::IssueStore;
 use crate::infra::clock::Clock;
@@ -32,7 +33,7 @@ pub struct Factory {
     config: Rc<Config>,
 
     info_retriever: Lazy<Arc<dyn InfoRetriever>>,
-    http_client: Lazy<Arc<reqwest::blocking::Client>>,
+    http_client: Lazy<Arc<reqwest::Client>>,
     repository_retriever: Lazy<Arc<dyn CommitRetriever>>,
     contribution_retriever: Lazy<Arc<dyn ContributionDataRetriever>>,
     github_client: Lazy<Arc<github::Client>>,
@@ -47,7 +48,7 @@ impl Factory {
         &self,
         reader: T,
         lock_file: &str,
-    ) -> Box<dyn Iterator<Item = Dependency> + 'a> {
+    ) -> Box<dyn Stream<Item = Dependency> + Unpin + Send + 'a> {
         let retriever = self.info_retriever(lock_file);
 
         match Self::package_manager(lock_file) {
@@ -149,10 +150,10 @@ impl Factory {
             .clone()
     }
 
-    fn http_client(&self) -> Arc<reqwest::blocking::Client> {
+    fn http_client(&self) -> Arc<reqwest::Client> {
         self.http_client
             .get(|| {
-                let reqwest_client = reqwest::blocking::Client::builder()
+                let reqwest_client = reqwest::Client::builder()
                     .timeout(Duration::from_secs(600))
                     .build()
                     .expect("unable to create the reqwest client");
@@ -217,10 +218,8 @@ impl Factory {
     fn github_client(&self) -> Arc<github::Client> {
         self.github_client
             .get(|| {
-                let github_client = github::Client::new(
-                    reqwest::blocking::Client::new(),
-                    Self::github_authentication(),
-                );
+                let github_client =
+                    github::Client::new(reqwest::Client::new(), Self::github_authentication());
 
                 Arc::new(github_client)
             })

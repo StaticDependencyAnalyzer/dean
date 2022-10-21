@@ -47,7 +47,10 @@ impl PolicyExecutor {
         }
     }
 
-    pub fn evaluate(&self, dependency: &Dependency) -> Result<Vec<Evaluation>, Box<dyn Error>> {
+    pub async fn evaluate(
+        &self,
+        dependency: &Dependency,
+    ) -> Result<Vec<Evaluation>, Box<dyn Error>> {
         let mut has_matched_regex_previously = false;
         let mut evaluations = vec![];
 
@@ -62,7 +65,7 @@ impl PolicyExecutor {
             }
 
             for policy in &execution_config.policies {
-                evaluations.push(policy.evaluate(dependency)?);
+                evaluations.push(policy.evaluate(dependency).await?);
             }
         }
 
@@ -77,8 +80,8 @@ mod tests {
     use crate::pkg::Repository;
     use crate::{Dependency, Evaluation, Policy};
 
-    #[test]
-    fn it_executes_all_policies_for_a_dependency_if_they_pass() {
+    #[tokio::test]
+    async fn it_executes_all_policies_for_a_dependency_if_they_pass() {
         let policies = vec![
             {
                 let mut policy = mock_policy();
@@ -104,7 +107,7 @@ mod tests {
         let config = vec![ExecutionConfig::new(policies, None).unwrap()];
         let policy_executor = PolicyExecutor::new(config);
 
-        let evaluation = policy_executor.evaluate(&dependency()).unwrap();
+        let evaluation = policy_executor.evaluate(&dependency()).await.unwrap();
 
         assert_eq!(
             evaluation,
@@ -115,8 +118,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn it_executes_both_policies_even_if_one_fails() {
+    #[tokio::test]
+    async fn it_executes_both_policies_even_if_one_fails() {
         let policies = vec![
             {
                 let mut policy = mock_policy();
@@ -145,7 +148,7 @@ mod tests {
 
         let policy_executor = PolicyExecutor::new(config);
 
-        let evaluation = policy_executor.evaluate(&dependency()).unwrap();
+        let evaluation = policy_executor.evaluate(&dependency()).await.unwrap();
 
         assert_eq!(evaluation.len(), 2);
         match evaluation.get(0).unwrap() {
@@ -170,8 +173,8 @@ mod tests {
         };
     }
 
-    #[test]
-    fn it_executes_only_the_second_policy_because_it_doesnt_match_the_first() {
+    #[tokio::test]
+    async fn it_executes_only_the_second_policy_because_it_doesnt_match_the_first() {
         let non_matching_policies = vec![{ mock_policy() as Box<dyn Policy> }];
         let matching_policies = vec![{
             let mut policy = mock_policy();
@@ -190,7 +193,7 @@ mod tests {
 
         let policy_executor = PolicyExecutor::new(config);
 
-        let evaluation = policy_executor.evaluate(&dependency()).unwrap();
+        let evaluation = policy_executor.evaluate(&dependency()).await.unwrap();
 
         assert_eq!(
             evaluation,
@@ -201,8 +204,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn if_the_dependency_doesnt_match_it_is_evaluated_with_the_default_policies() {
+    #[tokio::test]
+    async fn if_the_dependency_doesnt_match_it_is_evaluated_with_the_default_policies() {
         let default_policies = vec![{
             let mut policy = mock_policy();
             policy.expect_evaluate().once().return_once(|dep| {
@@ -226,7 +229,7 @@ mod tests {
         ];
         let policy_executor = PolicyExecutor::new(config);
 
-        let evaluation = policy_executor.evaluate(&dependency()).unwrap();
+        let evaluation = policy_executor.evaluate(&dependency()).await.unwrap();
 
         assert_eq!(evaluation.len(), 1);
         match evaluation.get(0).unwrap() {
@@ -242,8 +245,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn if_the_dependency_matches_it_is_evaluated_with_the_specified_policy_regardless_of_the_default_ones(
+    #[tokio::test]
+    async fn if_the_dependency_matches_it_is_evaluated_with_the_specified_policy_regardless_of_the_default_ones(
     ) {
         let default_policies = vec![{ mock_policy() as Box<dyn Policy> }];
         let matching_policies = vec![{
@@ -262,7 +265,7 @@ mod tests {
         ];
         let policy_executor = PolicyExecutor::new(config);
 
-        let evaluation = policy_executor.evaluate(&dependency()).unwrap();
+        let evaluation = policy_executor.evaluate(&dependency()).await.unwrap();
 
         assert_eq!(
             evaluation,

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use async_trait::async_trait;
+
 use crate::pkg::Repository;
 
 mod contributors_ratio;
@@ -43,13 +45,14 @@ pub trait CommitRetriever: Sync + Send {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait ContributionDataRetriever: Send + Sync {
-    fn get_issue_lifespan(
+    async fn get_issue_lifespan(
         &self,
         repository: &Repository,
         last_issues: usize,
     ) -> Result<f64, Box<dyn Error>>;
-    fn get_pull_request_lifespan(
+    async fn get_pull_request_lifespan(
         &self,
         repository: &Repository,
         last_pull_requests: usize,
@@ -102,7 +105,8 @@ impl PartialEq for Evaluation {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait Policy: Send + Sync {
     /// Evaluates the policy.
-    fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>>;
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>>;
 }

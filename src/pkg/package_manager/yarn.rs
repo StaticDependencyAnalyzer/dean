@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures_util::Stream;
 use itertools::Itertools;
-use log::info;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
-use crate::pkg::{DependencyRetriever, InfoRetriever, Repository};
+use crate::pkg::package_manager::cargo::DependencyStream;
+use crate::pkg::{DependencyRetriever, InfoRetriever};
 use crate::Dependency;
 
 pub struct DependencyReader<T>
@@ -37,7 +38,7 @@ impl<T> DependencyRetriever for DependencyReader<T>
 where
     T: tokio::io::AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency>>;
+    type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
 
     async fn dependencies(&self) -> Result<Self::Itr, String> {
         let content = self.content_from_reader().await?;
@@ -84,26 +85,13 @@ where
             })
             .collect_vec();
 
-        let npm_info_retriever = self.npm_info_retriever.clone();
-        let dependencies =
-            dependency_info_tuples
-                .into_iter()
-                .map(move |(dependency_name, dependency_version)| {
-                    info!(
-                        target: "dean::yarn-dependency-retriever",
-                        "retrieving information for dependency [name={}, version={}]",
-                        dependency_name, dependency_version
-                    );
-                    Dependency {
-                        latest_version: npm_info_retriever.latest_version(&dependency_name).ok(),
-                        repository: npm_info_retriever
-                            .repository(&dependency_name)
-                            .unwrap_or(Repository::Unknown),
-                        name: dependency_name,
-                        version: dependency_version,
-                    }
-                });
-
+        let dependencies = DependencyStream {
+            name_and_version_iter: dependency_info_tuples.into(),
+            next_name_and_version: None,
+            retriever: self.npm_info_retriever.clone(),
+            latest_version_retrieved: None,
+            latest_repository_retrieved: None,
+        };
         Ok(Box::new(dependencies))
     }
 }
@@ -126,6 +114,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use tokio_stream::StreamExt;
     use mockall::predicate::eq;
 
     use super::*;
@@ -160,7 +149,7 @@ mod tests {
         let dependency_reader = DependencyReader::new(yarn_lock_file(), retriever);
         let dependencies = dependency_reader.dependencies().await;
 
-        let deps = dependencies.unwrap().collect::<Vec<_>>();
+        let deps = dependencies.unwrap().collect::<Vec<_>>().await;
         let webpack_dependency = deps.iter().find(|dep| dep.name == "webpack").unwrap();
         let gen_mapping_dependency = deps
             .iter()

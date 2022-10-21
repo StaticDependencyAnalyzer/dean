@@ -1,9 +1,17 @@
+use std::error::Error;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::Poll;
 use std::time::Duration;
 
 use anyhow::Context;
+use async_recursion::async_recursion;
+use async_trait::async_trait;
+use futures_util::future::FutureExt;
+use futures_util::StreamExt;
 use log::{debug, error, warn};
 use serde_json::Value;
+use tokio_stream::Stream;
 
 use crate::infra::cached_issue_client::IssueClient;
 
@@ -14,22 +22,23 @@ pub enum Authentication {
 }
 
 pub struct Client {
-    client: Arc<reqwest::blocking::Client>,
+    client: Arc<reqwest::Client>,
     auth: Authentication,
 }
 
-pub struct IssuePullRequestIterator {
-    client: Arc<reqwest::blocking::Client>,
+pub struct IssuePullRequestStream {
+    client: Arc<reqwest::Client>,
     next_page: Option<String>,
     buffer: Vec<Value>,
     auth: Authentication,
 }
 
-impl IssuePullRequestIterator {
-    fn update_buffer(
+impl IssuePullRequestStream {
+    #[async_recursion]
+    async fn update_buffer(
         &mut self,
-        backoff: Option<(usize, std::time::Duration)>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+        backoff: Option<(usize, Duration)>,
+    ) -> Result<(), Box<dyn Error>> {
         if self.next_page.is_none() {
             return Ok(());
         }
@@ -47,7 +56,7 @@ impl IssuePullRequestIterator {
             request = request.basic_auth(user, passwd.as_ref());
         }
 
-        let response = request.send().context("Failed to get issues")?;
+        let response = request.send().await.context("Failed to get issues")?;
 
         if response.status().as_u16() == 403 {
             let total_allowed_attempts = 8;
@@ -59,6 +68,7 @@ impl IssuePullRequestIterator {
                     warn!(target: "dean::github_client", "Github API rate limit exceeded, remaining attempts [{}/{}], retrying in {} seconds", total_allowed_attempts, total_allowed_attempts, initial_duration.as_secs());
                     std::thread::sleep(initial_duration);
                     self.update_buffer(Some((total_allowed_attempts - 1, initial_duration * 2)))
+                        .await
                 }
                 Some((remaining_attempts, duration)) => {
                     if remaining_attempts == 0 {
@@ -68,6 +78,7 @@ impl IssuePullRequestIterator {
                     warn!(target: "dean::github_client", "Github API rate limit exceeded, remaining attempts [{}/{}], retrying in {} seconds", remaining_attempts, total_allowed_attempts, duration.as_secs());
                     std::thread::sleep(duration);
                     self.update_buffer(Some((remaining_attempts - 1, duration * 2)))
+                        .await
                 }
             };
         }
@@ -85,7 +96,10 @@ impl IssuePullRequestIterator {
             }
         };
 
-        let response_json = response.json::<Value>().context("Failed to parse issues")?;
+        let response_json = response
+            .json::<Value>()
+            .await
+            .context("Failed to parse issues")?;
 
         let issues = response_json
             .as_array()
@@ -98,56 +112,122 @@ impl IssuePullRequestIterator {
     }
 }
 
-impl Iterator for IssuePullRequestIterator {
+impl Stream for IssuePullRequestStream {
     type Item = Value;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        if !self.buffer.is_empty() {
-            return self.buffer.pop();
-        };
-
-        match self.update_buffer(None) {
-            Ok(_) => self.buffer.pop(),
-            Err(error) => {
-                error!("error retrieving issues: {:?}", error);
-                None
+    fn poll_next(
+        mut self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        if self.buffer.is_empty() {
+            match self.as_mut().update_buffer(None).now_or_never() {
+                Some(Ok(_)) => {}
+                Some(Err(e)) => {
+                    error!(target: "dean::github_client", "Failed to update buffer: {}", e);
+                    return Poll::Ready(None);
+                }
+                None => {
+                    cx.waker().wake_by_ref();
+                    return Poll::Pending;
+                }
             }
+        }
+
+        Poll::Ready(self.buffer.pop())
+    }
+}
+
+pub struct IssueStream {
+    issue_pull_request_iterator: IssuePullRequestStream,
+    issues_to_return: usize,
+    returned_issues: usize,
+}
+
+impl Stream for IssueStream {
+    type Item = Value;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Option<Self::Item>> {
+        let poll = self.as_mut().issue_pull_request_iterator.poll_next_unpin(cx);
+        match poll {
+            Poll::Ready(element) => {
+                if self.as_ref().returned_issues >= self.as_ref().issues_to_return {
+                    return Poll::Ready(None);
+                }
+
+                if let Some(inner) = element {
+                    if inner.get("pull_request").is_none() {
+                        self.returned_issues += 1;
+                        Poll::Ready(Some(inner))
+                    } else {
+                        self.poll_next(cx)
+                    }
+                } else {
+                    Poll::Ready(None)
+                }
+            }
+            Poll::Pending => Poll::Pending,
         }
     }
 }
 
+pub struct PullRequestStream {
+    issue_pull_request_iterator: IssuePullRequestStream,
+}
+
+impl Stream for PullRequestStream {
+    type Item = Value;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut std::task::Context<'_>) -> Poll<Option<Self::Item>> {
+        let poll = self.as_mut().issue_pull_request_iterator.poll_next_unpin(cx);
+        match poll {
+            Poll::Ready(element) => {
+                if let Some(inner) = element {
+                    if inner.get("pull_request").is_some() {
+                        Poll::Ready(Some(inner))
+                    } else {
+                        self.poll_next(cx)
+                    }
+                } else {
+                    Poll::Ready(None)
+                }
+            }
+            Poll::Pending => Poll::Pending,
+        }
+        // return poll;
+    }
+}
+
+#[async_trait]
 impl IssueClient for Client {
-    fn get_last_issues(
+    async fn get_last_issues(
         &self,
         organization: &str,
         repo: &str,
         last_issues: usize,
-    ) -> Box<dyn Iterator<Item = Value>> {
-        let iter = self
-            .all_issues_iterator(organization, repo)
-            .filter(|issue| issue.get("pull_request").is_none())
-            .take(last_issues);
-        Box::new(iter)
+    ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
+        Box::new(IssueStream {
+            issue_pull_request_iterator: self.all_issues_iterator(organization, repo),
+            issues_to_return: last_issues,
+            returned_issues: 0,
+        })
     }
 
-    fn get_last_pull_requests(
+    async fn get_last_pull_requests(
         &self,
         organization: &str,
         repo: &str,
-        last_pull_requests: usize,
-    ) -> Box<dyn Iterator<Item = Value>> {
-        let iter = self
-            .all_issues_iterator(organization, repo)
-            .filter(|issue| issue.get("pull_request").is_some())
-            .take(last_pull_requests);
-        Box::new(iter)
+        _last_pull_requests: usize,
+    ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
+        Box::new(PullRequestStream {
+            issue_pull_request_iterator: self.all_issues_iterator(organization, repo),
+        })
     }
 }
 
 impl Client {
     pub fn new<C>(client: C, auth: Authentication) -> Self
     where
-        C: Into<Arc<reqwest::blocking::Client>>,
+        C: Into<Arc<reqwest::Client>>,
     {
         Self {
             client: client.into(),
@@ -155,8 +235,8 @@ impl Client {
         }
     }
 
-    fn all_issues_iterator(&self, organization: &str, repo: &str) -> IssuePullRequestIterator {
-        IssuePullRequestIterator {
+    fn all_issues_iterator(&self, organization: &str, repo: &str) -> IssuePullRequestStream {
+        IssuePullRequestStream {
             client: self.client.clone(),
             next_page: Some(format!(
                 "https://api.github.com/repos/{}/{}/issues?state=all&direction=asc&sort=created&per_page=100&page=1",
@@ -174,41 +254,46 @@ mod tests {
 
     use super::*;
 
-    #[test]
-    fn it_retrieves_the_issues_from_dean_from_newer_to_older() {
-        let client = Client::new(reqwest::blocking::Client::new(), authentication());
+    #[tokio::test]
+    async fn it_retrieves_the_issues_from_dean_from_newer_to_older() {
+        let client = Client::new(reqwest::Client::new(), authentication());
 
         let issues = client
             .get_last_issues("StaticDependencyAnalyzer", "dean", 100)
-            .collect::<Vec<_>>();
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
         assert!(issues.len() >= 6);
         assert!(creation_timestamp(&issues[0]) > creation_timestamp(&issues[1]));
     }
 
-    #[test]
-    fn it_retrieves_the_pull_requests_from_dean_from_newer_to_older() {
-        let client = Client::new(reqwest::blocking::Client::new(), authentication());
+    #[tokio::test]
+    async fn it_retrieves_the_pull_requests_from_dean_from_newer_to_older() {
+        let client = Client::new(reqwest::Client::new(), authentication());
 
         let prs = client
             .get_last_pull_requests("StaticDependencyAnalyzer", "dean", 100)
-            .collect::<Vec<_>>();
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
         assert!(prs.len() > 10);
         assert!(creation_timestamp(&prs[0]) > creation_timestamp(&prs[1]));
     }
 
-    #[test]
-    fn it_retrieves_150_issues_from_rust_lang() {
-        let client = Client::new(reqwest::blocking::Client::new(), authentication());
+    #[tokio::test]
+    async fn it_retrieves_150_issues_from_rust_lang() {
+        let client = Client::new(reqwest::Client::new(), authentication());
 
-        let issues = client.get_last_issues("rust-lang", "rust", 150);
-        assert!(issues.count() <= 150);
+        let issues = client.get_last_issues("rust-lang", "rust", 150).await;
+        assert!(issues.count().await <= 150);
 
-        let mut issues = client.get_last_issues("rust-lang", "rust", 150);
+        let mut issues = client.get_last_issues("rust-lang", "rust", 150).await;
         assert_eq!(
             issues
                 .next()
+                .await
                 .as_ref()
                 .unwrap()
                 .get("repository_url")

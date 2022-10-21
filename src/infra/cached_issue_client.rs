@@ -1,24 +1,30 @@
 use std::error::Error;
 use std::sync::Arc;
 
-use concurrent_lru::sharded::{CacheHandle, LruCache};
+use async_trait::async_trait;
 use log::error;
+use moka::future::Cache;
 use serde_json::Value;
+use tokio::pin;
+use tokio_stream::{Stream, StreamExt};
+
+
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait IssueClient: Send + Sync {
-    fn get_last_issues(
+    async fn get_last_issues(
         &self,
         organization: &str,
         repo: &str,
         last_issues: usize,
-    ) -> Box<dyn Iterator<Item = Value>>;
-    fn get_last_pull_requests(
+    ) -> Box<dyn Stream<Item = Value> + Unpin + Send>;
+    async fn get_last_pull_requests(
         &self,
         organization: &str,
         repo: &str,
         last_pull_requests: usize,
-    ) -> Box<dyn Iterator<Item = Value>>;
+    ) -> Box<dyn Stream<Item = Value> + Unpin + Send>;
 }
 
 #[cfg_attr(test, mockall::automock)]
@@ -56,8 +62,8 @@ pub struct CachedClient {
     provider: String,
     inner: Arc<dyn IssueClient>,
     store: Arc<dyn IssueStore>,
-    issue_cache: LruCache<CacheKey, Vec<Value>>,
-    pull_request_cache: LruCache<CacheKey, Vec<Value>>,
+    issue_cache: Cache<CacheKey, Vec<Value>>,
+    pull_request_cache: Cache<CacheKey, Vec<Value>>,
 }
 
 impl CachedClient {
@@ -70,92 +76,105 @@ impl CachedClient {
             provider: provider.to_string(),
             inner: inner.into(),
             store: store.into(),
-            issue_cache: LruCache::new(1024),
-            pull_request_cache: LruCache::new(1024),
+            issue_cache: Cache::new(1024),
+            pull_request_cache: Cache::new(1024),
         }
     }
 
-    pub fn get_last_issues(
+    pub async fn get_last_issues(
         &self,
         organization: &str,
         repo: &str,
         last_issues: usize,
-    ) -> Box<dyn Iterator<Item = Value>> {
+    ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
         let key = CacheKey {
             organization: organization.to_string(),
             repo: repo.to_string(),
         };
 
-        let issues: Result<CacheHandle<CacheKey, Vec<Value>>, Box<dyn Error>> =
-            self.issue_cache.get_or_try_init(key, 1, |_| {
-                if let Some(issues) = self.store.get_issues(&self.provider, organization, repo) {
-                    return Ok(issues);
-                }
+        let issues = self.issue_cache.try_get_with(key, async {
+            if let Some(issues) = self.store.get_issues(&self.provider, organization, repo) {
+                return Ok(issues);
+            }
 
-                let issues = self.inner.get_last_issues(organization, repo, last_issues);
-                let issue_vec: Vec<_> = issues.collect();
+            let issues = self
+                .inner
+                .get_last_issues(organization, repo, last_issues)
+                .await;
+            pin!(issues);
+            let mut issue_vec: Vec<_> = Vec::new();
+            while let Some(issue) = issues.next().await {
+                issue_vec.push(issue);
+            }
 
-                self.store
-                    .save_issues(&self.provider, organization, repo, &issue_vec)?;
+            match self
+                .store
+                .save_issues(&self.provider, organization, repo, &issue_vec)
+            {
+                Ok(_) => Ok(issue_vec),
+                Err(inner) => Err(inner.to_string()),
+            }
+        });
 
-                Ok(issue_vec)
-            });
-
-        match issues {
-            Ok(issues) => Box::new(issues.value().clone().into_iter()),
+        match issues.await {
+            Ok(issues) => Box::new(tokio_stream::iter(issues)),
             Err(err) => {
                 error!(
                     "failed to get issues for {}/{}: {}",
                     organization, repo, err
                 );
-                Box::new(std::iter::empty())
+                Box::new(tokio_stream::empty())
             }
         }
     }
 
-    pub fn get_pull_requests(
+    pub async fn get_pull_requests(
         &self,
         organization: &str,
         repo: &str,
         last_pull_requests: usize,
-    ) -> Box<dyn Iterator<Item = Value>> {
+    ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
         let key = CacheKey {
             organization: organization.to_string(),
             repo: repo.to_string(),
         };
 
-        let pull_requests: Result<CacheHandle<CacheKey, Vec<Value>>, Box<dyn Error>> =
-            self.pull_request_cache.get_or_try_init(key, 1, |_| {
-                if let Some(pull_requests) =
-                    self.store
-                        .get_pull_requests(&self.provider, organization, repo)
-                {
-                    return Ok(pull_requests);
-                }
+        let pull_requests = self.pull_request_cache.try_get_with(key, async {
+            if let Some(pull_requests) =
+                self.store
+                    .get_pull_requests(&self.provider, organization, repo)
+            {
+                return Ok(pull_requests);
+            }
 
-                let pull_requests =
-                    self.inner
-                        .get_last_pull_requests(organization, repo, last_pull_requests);
-                let pull_request_vec: Vec<_> = pull_requests.collect();
+            let mut pull_requests = self
+                .inner
+                .get_last_pull_requests(organization, repo, last_pull_requests)
+                .await;
+            let mut pull_request_vec = Vec::new();
+            while let Some(pull_request) = pull_requests.next().await {
+                pull_request_vec.push(pull_request);
+            }
 
-                self.store.save_pull_requests(
-                    &self.provider,
-                    organization,
-                    repo,
-                    &pull_request_vec,
-                )?;
+            match self.store.save_pull_requests(
+                &self.provider,
+                organization,
+                repo,
+                &pull_request_vec,
+            ) {
+                Ok(_) => Ok(pull_request_vec),
+                Err(inner) => Err(inner.to_string()),
+            }
+        });
 
-                Ok(pull_request_vec)
-            });
-
-        match pull_requests {
-            Ok(pull_requests) => Box::new(pull_requests.value().clone().into_iter()),
+        match pull_requests.await {
+            Ok(pull_requests) => Box::new(tokio_stream::iter(pull_requests)),
             Err(err) => {
                 error!(
                     "failed to get pull requests for {}/{}: {}",
                     organization, repo, err
                 );
-                Box::new(std::iter::empty())
+                Box::new(tokio_stream::empty())
             }
         }
     }
@@ -163,11 +182,12 @@ impl CachedClient {
 
 #[cfg(test)]
 mod tests {
+    use futures_util::StreamExt;
 
     use super::*;
 
-    #[test]
-    fn it_retrieves_issues_if_not_present_in_store_exactly_once() {
+    #[tokio::test]
+    async fn it_retrieves_issues_if_not_present_in_store_exactly_once() {
         let issue_store: Box<dyn IssueStore> = {
             let mut issue_store = Box::new(MockIssueStore::new());
             issue_store.expect_get_issues().return_const(None).once();
@@ -181,22 +201,30 @@ mod tests {
             let mut issue_client = Box::new(MockIssueClient::new());
             issue_client
                 .expect_get_last_issues()
-                .return_once(|_, _, _| Box::new(issues_in_repo().into_iter()))
+                .return_once(|_, _, _| Box::new(tokio_stream::iter(issues_in_repo())))
                 .once();
             issue_client
         };
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
-        let second_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
+        let first_call_issues = cached_client
+            .get_last_issues("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
+        let second_call_issues = cached_client
+            .get_last_issues("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
-        assert!(first_call_issues.eq(issues_in_repo()));
-        assert!(second_call_issues.eq(issues_in_repo()));
+        assert!(first_call_issues.eq(&issues_in_repo()));
+        assert!(second_call_issues.eq(&issues_in_repo()));
     }
 
-    #[test]
-    fn if_the_issues_are_already_present_in_the_store_it_retrieves_them_from_the_store() {
+    #[tokio::test]
+    async fn if_the_issues_are_already_present_in_the_store_it_retrieves_them_from_the_store() {
         let issue_store: Box<dyn IssueStore> = {
             let mut issue_store = Box::new(MockIssueStore::new());
             issue_store
@@ -209,15 +237,23 @@ mod tests {
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
-        let second_call_issues = cached_client.get_last_issues("some_org", "some_repo", 10);
+        let first_call_issues = cached_client
+            .get_last_issues("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
+        let second_call_issues = cached_client
+            .get_last_issues("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
-        assert!(first_call_issues.eq(issues_in_repo()));
-        assert!(second_call_issues.eq(issues_in_repo()));
+        assert!(first_call_issues.eq(&issues_in_repo()));
+        assert!(second_call_issues.eq(&issues_in_repo()));
     }
 
-    #[test]
-    fn it_retrieves_pull_requests_if_not_present_in_store_exactly_once() {
+    #[tokio::test]
+    async fn it_retrieves_pull_requests_if_not_present_in_store_exactly_once() {
         let issue_store: Box<dyn IssueStore> = {
             let mut issue_store = Box::new(MockIssueStore::new());
             issue_store
@@ -234,23 +270,34 @@ mod tests {
             let mut issue_client = Box::new(MockIssueClient::new());
             issue_client
                 .expect_get_last_pull_requests()
-                .return_once(|_, _, _| Box::new(pull_requests_in_repo().into_iter()))
+                .return_once(|_, _, _| Box::new(tokio_stream::iter(pull_requests_in_repo())))
                 .once();
             issue_client
         };
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo", 10);
-        let second_call_pull_requests =
-            cached_client.get_pull_requests("some_org", "some_repo", 10);
+        let first_call_pull_requests = cached_client
+            .get_pull_requests("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
+        let second_call_pull_requests = cached_client
+            .get_pull_requests("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
-        assert!(first_call_pull_requests.eq(pull_requests_in_repo()));
-        assert!(second_call_pull_requests.eq(pull_requests_in_repo()));
+        println!("{:?}", first_call_pull_requests);
+        println!("{:?}", second_call_pull_requests);
+        println!("{:?}", &pull_requests_in_repo());
+        assert!(first_call_pull_requests.eq(&pull_requests_in_repo()));
+        assert!(second_call_pull_requests.eq(&pull_requests_in_repo()));
     }
 
-    #[test]
-    fn if_the_pull_requests_are_already_present_in_the_store_it_retrieves_them_from_the_store() {
+    #[tokio::test]
+    async fn if_the_pull_requests_are_already_present_in_the_store_it_retrieves_them_from_the_store(
+    ) {
         let issue_store: Box<dyn IssueStore> = {
             let mut issue_store = Box::new(MockIssueStore::new());
             issue_store
@@ -263,12 +310,19 @@ mod tests {
 
         let cached_client = CachedClient::new("github", issue_client, issue_store);
 
-        let first_call_pull_requests = cached_client.get_pull_requests("some_org", "some_repo", 10);
-        let second_call_pull_requests =
-            cached_client.get_pull_requests("some_org", "some_repo", 10);
+        let first_call_pull_requests = cached_client
+            .get_pull_requests("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
+        let second_call_pull_requests = cached_client
+            .get_pull_requests("some_org", "some_repo", 10)
+            .await
+            .collect::<Vec<_>>()
+            .await;
 
-        assert!(first_call_pull_requests.eq(pull_requests_in_repo()));
-        assert!(second_call_pull_requests.eq(pull_requests_in_repo()));
+        assert!(first_call_pull_requests.eq(&pull_requests_in_repo()));
+        assert!(second_call_pull_requests.eq(&pull_requests_in_repo()));
     }
 
     fn pull_requests_in_repo() -> Vec<Value> {
