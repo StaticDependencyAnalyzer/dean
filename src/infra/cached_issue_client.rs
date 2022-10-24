@@ -182,7 +182,7 @@ impl CachedClient {
 
 #[cfg(test)]
 mod tests {
-    use futures_util::StreamExt;
+    use futures::StreamExt;
 
     use super::*;
 

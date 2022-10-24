@@ -1,17 +1,13 @@
-use std::collections::VecDeque;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 
 use async_trait::async_trait;
-use futures_util::FutureExt;
 use log::error;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 use tokio_stream::Stream;
 use toml::Value;
 
-use crate::pkg::Repository;
-use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever};
+use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
 pub struct DependencyReader<T>
 where
@@ -19,77 +15,6 @@ where
 {
     cargo_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
-}
-
-pub struct DependencyStream {
-    pub(crate) name_and_version_iter: VecDeque<(String, String)>,
-    pub(crate) next_name_and_version: Option<(String, String)>,
-
-    pub(crate) retriever: Arc<dyn InfoRetriever>,
-    pub(crate) latest_version_retrieved: Option<Result<String, String>>,
-    pub(crate) latest_repository_retrieved: Option<Result<Repository, String>>,
-}
-
-impl Stream for DependencyStream {
-    type Item = Dependency;
-
-    fn poll_next(
-        mut self: std::pin::Pin<&mut Self>,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        if self.as_ref().next_name_and_version.is_some() {
-            let mut next_name_and_version = self.as_mut().name_and_version_iter.pop_front();
-            if next_name_and_version.is_none() {
-                return Poll::Ready(None);
-            }
-
-            self.as_mut().next_name_and_version =
-                Some(next_name_and_version.take().unwrap());
-        }
-        let (name, version) = self.as_ref().next_name_and_version.clone().unwrap();
-
-        if self.as_ref().latest_version_retrieved.is_none() {
-            if let Some(result) = self.as_mut().retriever.latest_version(&name).now_or_never() {
-                self.as_mut().latest_version_retrieved = Some(result);
-            }
-        }
-
-        if self.as_ref().latest_repository_retrieved.is_none() {
-            if let Some(result) = self.as_mut().retriever.repository(&name).now_or_never() {
-                self.as_mut().latest_repository_retrieved = Some(result);
-            }
-        }
-
-        if self.as_ref().latest_version_retrieved.is_some()
-            && self.as_ref().latest_repository_retrieved.is_some()
-        {
-            let latest_version = self.as_mut().latest_version_retrieved.take().unwrap();
-            let latest_repository = self.as_mut().latest_repository_retrieved.take().unwrap();
-            self.as_mut().next_name_and_version = None;
-
-            if latest_version.is_err() {
-                error!("Failed to retrieve latest version for dependency {}", name);
-                return Poll::Ready(None);
-            }
-            if latest_repository.is_err() {
-                error!(
-                    "Failed to retrieve latest repository for dependency {}",
-                    name
-                );
-                return Poll::Ready(None);
-            }
-
-            return Poll::Ready(Some(Dependency {
-                name,
-                version,
-                latest_version: Some(latest_version.unwrap()),
-                repository: latest_repository.unwrap(),
-            }));
-        }
-
-        cx.waker().wake_by_ref();
-        Poll::Pending
-    }
 }
 
 #[async_trait]
@@ -136,14 +61,30 @@ where
                 result.map_err(|e| error!("{}", e)).ok()
             });
 
-        let dependencies = DependencyStream {
-            name_and_version_iter: name_and_version_from_packages.collect(),
-            next_name_and_version: None,
+        struct StreamStatus {
+            name_and_versions_to_retrieve: Vec<(String, String)>,
+            retriever : Arc<dyn InfoRetriever>,
+        }
+
+        let status = StreamStatus {
+            name_and_versions_to_retrieve: name_and_version_from_packages.collect(),
             retriever: self.cargo_info_retriever.clone(),
-            latest_version_retrieved: None,
-            latest_repository_retrieved: None,
         };
-        Ok(Box::new(dependencies))
+
+        let unfold = futures::stream::unfold(status, |mut status| async move {
+            if let Some((name, version)) = status.name_and_versions_to_retrieve.pop() {
+                let dependency = Dependency {
+                    name: name.clone(),
+                    version: version.clone(),
+                    latest_version: status.retriever.latest_version(&name).await.ok(),
+                    repository: status.retriever.repository(&name).await.unwrap_or(Repository::Unknown),
+                };
+                Some((dependency, status))
+            } else {
+                None
+            }
+        });
+        Ok(Box::new(Box::pin(unfold)))
     }
 }
 

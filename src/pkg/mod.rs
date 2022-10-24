@@ -1,7 +1,7 @@
 use std::fmt::{Display, Formatter};
 
 use async_trait::async_trait;
-use futures_util::Stream;
+use futures::Stream;
 use lazy_static::lazy_static;
 use regex::Regex;
 

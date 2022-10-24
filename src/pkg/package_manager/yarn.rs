@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use futures_util::Stream;
+use futures::Stream;
 use itertools::Itertools;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
-use crate::pkg::package_manager::cargo::DependencyStream;
-use crate::pkg::{DependencyRetriever, InfoRetriever};
+use crate::pkg::{DependencyRetriever, InfoRetriever, Repository};
 use crate::Dependency;
 
 pub struct DependencyReader<T>
@@ -85,14 +84,30 @@ where
             })
             .collect_vec();
 
-        let dependencies = DependencyStream {
-            name_and_version_iter: dependency_info_tuples.into(),
-            next_name_and_version: None,
+        struct StreamStatus {
+            name_and_versions_to_retrieve: Vec<(String, String)>,
+            retriever : Arc<dyn InfoRetriever>,
+        }
+
+        let status = StreamStatus {
+            name_and_versions_to_retrieve: dependency_info_tuples,
             retriever: self.npm_info_retriever.clone(),
-            latest_version_retrieved: None,
-            latest_repository_retrieved: None,
         };
-        Ok(Box::new(dependencies))
+
+        let unfold = futures::stream::unfold(status, |mut status| async move {
+            if let Some((name, version)) = status.name_and_versions_to_retrieve.pop() {
+                let dependency = Dependency {
+                    name: name.clone(),
+                    version: version.clone(),
+                    latest_version: status.retriever.latest_version(&name).await.ok(),
+                    repository: status.retriever.repository(&name).await.unwrap_or(Repository::Unknown),
+                };
+                Some((dependency, status))
+            } else {
+                None
+            }
+        });
+        Ok(Box::new(Box::pin(unfold)))
     }
 }
 

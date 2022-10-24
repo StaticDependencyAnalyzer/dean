@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use futures::Stream;
 use log::error;
 use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::Mutex;
 
-use crate::pkg::package_manager::cargo::DependencyStream;
-use crate::pkg::{DependencyRetriever, InfoRetriever};
+use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
 pub struct DependencyReader<T>
 where
@@ -22,7 +22,7 @@ impl<T> DependencyRetriever for DependencyReader<T>
 where
     T: AsyncRead + Unpin + Send,
 {
-    type Itr = DependencyStream;
+    type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
     async fn dependencies(&self) -> Result<Self::Itr, String> {
         let content = {
             let mut content = String::new();
@@ -55,13 +55,34 @@ where
                 }
             });
 
-        Ok(DependencyStream {
-            name_and_version_iter: deps.collect(),
-            next_name_and_version: None,
-            latest_version_retrieved: None,
-            latest_repository_retrieved: None,
+        struct StreamStatus {
+            name_and_versions_to_retrieve: Vec<(String, String)>,
+            retriever: Arc<dyn InfoRetriever>,
+        }
+
+        let status = StreamStatus {
+            name_and_versions_to_retrieve: deps.collect(),
             retriever: self.npm_info_retriever.clone(),
-        })
+        };
+
+        let unfold = futures::stream::unfold(status, |mut status| async move {
+            if let Some((name, version)) = status.name_and_versions_to_retrieve.pop() {
+                let dependency = Dependency {
+                    name: name.clone(),
+                    version: version.clone(),
+                    latest_version: status.retriever.latest_version(&name).await.ok(),
+                    repository: status
+                        .retriever
+                        .repository(&name)
+                        .await
+                        .unwrap_or(Repository::Unknown),
+                };
+                Some((dependency, status))
+            } else {
+                None
+            }
+        });
+        Ok(Box::new(Box::pin(unfold)))
     }
 }
 
@@ -82,12 +103,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use futures_util::StreamExt;
+    use futures::StreamExt;
     use mockall::predicate::eq;
-    use crate::Dependency;
 
     use super::*;
     use crate::pkg::{MockInfoRetriever, Repository};
+    use crate::Dependency;
 
     #[tokio::test]
     async fn retrieves_all_dependencies() {
