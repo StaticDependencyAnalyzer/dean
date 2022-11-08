@@ -23,7 +23,7 @@ impl Policy for MinNumberOfReleasesRequired {
             .repository
             .url()
             .context("the repository did not contain a URL")?;
-        let all_tags = self.retriever.all_tags(&repository_url)?;
+        let all_tags = self.retriever.all_tags(&repository_url).await?;
 
         let now = self.clock.now_timestamp();
         let num_tags_in_range = all_tags
@@ -89,7 +89,8 @@ mod tests {
     use crate::Dependency;
 
     #[tokio::test]
-    async fn when_there_are_more_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
+    async fn when_there_are_more_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation(
+    ) {
         let retriever = {
             let mut retriever = MockCommitRetriever::new();
             retriever
@@ -144,7 +145,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn when_there_are_less_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
+    async fn when_there_are_less_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation(
+    ) {
         let retriever = {
             let mut retriever = MockCommitRetriever::new();
             retriever

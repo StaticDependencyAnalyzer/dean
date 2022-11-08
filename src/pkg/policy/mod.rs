@@ -33,15 +33,16 @@ pub struct Tag {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait CommitRetriever: Sync + Send {
     /// Retrieves the commits for each tag.
-    fn commits_for_each_tag(
+    async fn commits_for_each_tag(
         &self,
         repository_url: &str,
     ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>>;
 
     /// Retrieves all the tags from a repository ordered by time, where the latest one is the most recent.
-    fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>>;
+    async fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>>;
 }
 
 #[cfg_attr(test, mockall::automock)]

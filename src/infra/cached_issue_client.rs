@@ -8,8 +8,6 @@ use serde_json::Value;
 use tokio::pin;
 use tokio_stream::{Stream, StreamExt};
 
-
-
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait IssueClient: Send + Sync {

@@ -1,3 +1,4 @@
+pub mod cache;
 pub mod cached_issue_client;
 pub mod clock;
 pub mod commit_store;

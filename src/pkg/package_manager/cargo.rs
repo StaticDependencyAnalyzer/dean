@@ -63,7 +63,7 @@ where
 
         struct StreamStatus {
             name_and_versions_to_retrieve: Vec<(String, String)>,
-            retriever : Arc<dyn InfoRetriever>,
+            retriever: Arc<dyn InfoRetriever>,
         }
 
         let status = StreamStatus {
@@ -77,7 +77,11 @@ where
                     name: name.clone(),
                     version: version.clone(),
                     latest_version: status.retriever.latest_version(&name).await.ok(),
-                    repository: status.retriever.repository(&name).await.unwrap_or(Repository::Unknown),
+                    repository: status
+                        .retriever
+                        .repository(&name)
+                        .await
+                        .unwrap_or(Repository::Unknown),
                 };
                 Some((dependency, status))
             } else {

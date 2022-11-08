@@ -184,7 +184,8 @@ impl IssueClient for Client {
         let stream = self.all_issues_iterator(organization, repo);
 
         let unfold = futures::stream::unfold(stream, func);
-        let issues = unfold.filter(|value| futures::future::ready(value.get("pull_request").is_none()));
+        let issues =
+            unfold.filter(|value| futures::future::ready(value.get("pull_request").is_none()));
         Box::new(Box::pin(issues))
     }
 

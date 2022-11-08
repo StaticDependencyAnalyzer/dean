@@ -250,15 +250,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "concurrent_lru"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7feb5cb312f774e8a24540e27206db4e890f7d488563671d24a16389cf4c2e4e"
-dependencies = [
- "once_cell",
-]
-
-[[package]]
 name = "core-foundation"
 version = "0.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -340,7 +331,6 @@ dependencies = [
  "async-recursion",
  "async-trait",
  "clap",
- "concurrent_lru",
  "csv-async",
  "dirs-next",
  "futures",
