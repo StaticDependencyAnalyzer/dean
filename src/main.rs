@@ -10,6 +10,7 @@ mod pkg;
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
+use futures::future::join_all;
 
 use log::{error, info, warn, LevelFilter};
 use tokio::fs::File;
@@ -21,7 +22,7 @@ use crate::pkg::config::Config;
 use crate::pkg::policy::{Evaluation, Policy};
 use crate::pkg::{Dependency, ResultReporter};
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
     let args = parse_args();
     load_logger()?;
@@ -84,9 +85,10 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
         async_results.push(task);
     }
 
+    let async_results = join_all(async_results).await;
     let mut results = Vec::new();
     for async_result in async_results {
-        results.push(async_result.await);
+        results.push(async_result);
     }
 
     let sequential_results = results.into_iter().flatten().flatten().flatten();

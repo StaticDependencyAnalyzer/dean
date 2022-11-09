@@ -1,8 +1,7 @@
 use std::collections::HashSet;
-use std::error::Error;
 use std::sync::Arc;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use itertools::Itertools;
 
@@ -18,7 +17,7 @@ pub struct ContributorsRatio {
 #[async_trait]
 impl Policy for ContributorsRatio {
     #[allow(clippy::cast_precision_loss)]
-    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error> {
         let repo_url = dependency
             .repository
             .url()
@@ -28,7 +27,7 @@ impl Policy for ContributorsRatio {
             .retriever
             .all_tags(&repo_url)
             .await
-            .map_err(|e| format!("unable to retrieve all tags for repo {}: {}", &repo_url, e))?
+            .map_err(|e| anyhow!("unable to retrieve all tags for repo {}: {}", &repo_url, e))?
             .into_iter();
         let tags_to_check = all_tags.rev().take(self.max_number_of_releases_to_check);
         let tag_names = tags_to_check.map(|tag| tag.name).collect::<HashSet<_>>();
@@ -38,7 +37,7 @@ impl Policy for ContributorsRatio {
             .commits_for_each_tag(&repo_url)
             .await
             .map_err(|e| {
-                format!(
+                anyhow!(
                     "unable to retrieve commits for each tag for repo {}: {}",
                     &repo_url, e
                 )

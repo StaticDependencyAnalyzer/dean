@@ -1,5 +1,6 @@
-use std::error::Error;
+
 use std::sync::Arc;
+use anyhow::anyhow;
 
 use async_trait::async_trait;
 
@@ -14,11 +15,11 @@ pub struct MaxIssueLifespan {
 
 #[async_trait]
 impl Policy for MaxIssueLifespan {
-    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error> {
         let issue_lifespan = self
             .contribution_data_retriever
             .get_issue_lifespan(&dependency.repository, self.last_issues)
-            .await?;
+            .await.map_err(|e| anyhow!("error retrieving issue lifespan: {}", e))?;
 
         if issue_lifespan > self.max_issue_lifespan {
             let fail_score = if self.max_issue_lifespan == 0.0 {

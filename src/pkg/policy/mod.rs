@@ -109,5 +109,5 @@ impl PartialEq for Evaluation {
 #[async_trait]
 pub trait Policy: Send + Sync {
     /// Evaluates the policy.
-    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>>;
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error>;
 }

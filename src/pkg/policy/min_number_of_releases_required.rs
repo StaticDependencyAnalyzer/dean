@@ -1,8 +1,8 @@
-use std::error::Error;
+
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 
 use super::{Clock, CommitRetriever, Evaluation};
@@ -18,12 +18,12 @@ pub struct MinNumberOfReleasesRequired {
 
 #[async_trait]
 impl Policy for MinNumberOfReleasesRequired {
-    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error> {
         let repository_url = dependency
             .repository
             .url()
             .context("the repository did not contain a URL")?;
-        let all_tags = self.retriever.all_tags(&repository_url).await?;
+        let all_tags = self.retriever.all_tags(&repository_url).await.map_err(|e| anyhow!("error retrieving all tags: {}", e))?;
 
         let now = self.clock.now_timestamp();
         let num_tags_in_range = all_tags
@@ -135,7 +135,7 @@ mod tests {
             },
             ..Dependency::default()
         };
-        let result: Result<Evaluation, Box<dyn Error>> =
+        let result: Result<Evaluation, anyhow::Error> =
             number_of_releases_policy.evaluate(&dependency).await;
 
         assert_eq!(
@@ -178,7 +178,7 @@ mod tests {
             },
             ..Dependency::default()
         };
-        let result: Result<Evaluation, Box<dyn Error>> =
+        let result: Result<Evaluation, anyhow::Error> =
             number_of_releases_policy.evaluate(&dependency).await;
 
         assert_eq!(
@@ -238,7 +238,7 @@ mod tests {
             },
             ..Dependency::default()
         };
-        let result: Result<Evaluation, Box<dyn Error>> =
+        let result: Result<Evaluation, anyhow::Error> =
             number_of_releases_policy.evaluate(&dependency).await;
 
         assert_eq!(

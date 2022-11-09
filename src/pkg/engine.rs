@@ -1,26 +1,28 @@
 use std::cmp::Ordering;
 use std::error::Error;
+use std::sync::Arc;
 
+use futures::future::join_all;
 use itertools::Itertools;
 
 use crate::{Dependency, Evaluation, Policy};
 
 pub struct ExecutionConfig {
     regex: Option<regex::Regex>,
-    policies: Vec<Box<dyn Policy>>,
+    policies: Vec<Arc<dyn Policy>>,
 }
 
 impl ExecutionConfig {
     pub fn new(
         policies: Vec<Box<dyn Policy>>,
         dependency_name_regex: Option<&str>,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    ) -> Result<Self, Box<dyn Error>> {
         Ok(Self {
             regex: match dependency_name_regex {
                 Some(regex) => Some(regex::Regex::new(regex)?),
                 None => None,
             },
-            policies,
+            policies: policies.into_iter().map(std::convert::Into::into).collect(),
         })
     }
 }
@@ -65,8 +67,18 @@ impl PolicyExecutor {
             }
 
             for policy in &execution_config.policies {
-                evaluations.push(policy.evaluate(dependency).await?);
+                let policy = policy.clone();
+                let dependency = dependency.clone();
+                evaluations.push(tokio::spawn(
+                    async move { policy.evaluate(&dependency).await },
+                ));
             }
+        }
+
+        let evaluations_resolved = join_all(evaluations).await;
+        let mut evaluations = vec![];
+        for evaluation in &evaluations_resolved {
+            evaluations.push(evaluation.as_ref().unwrap().as_ref().unwrap().clone());
         }
 
         Ok(evaluations)
