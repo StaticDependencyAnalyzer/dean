@@ -3,13 +3,19 @@ use std::future::Future;
 use std::hash::Hash;
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
+
+type ShardedLock<V> = Arc<RwLock<Option<V>>>;
 
 pub struct Cache<K, V> {
-    values: Mutex<HashMap<K, Arc<Mutex<Option<V>>>>>,
+    values: Arc<Mutex<HashMap<K, ShardedLock<V>>>>,
 }
 
-impl<K, V> Cache<K, V> {
+impl<K, V> Cache<K, V>
+where
+    K: 'static + Send + Sync,
+    V: 'static + Send + Sync,
+{
     pub async fn get_or_try_init<F, R, E>(&self, key: K, f: F) -> Result<V, E>
     where
         K: Hash + Eq + Clone,
@@ -17,22 +23,34 @@ impl<K, V> Cache<K, V> {
         R: Future<Output = Result<V, E>>,
         V: Clone,
     {
-        let mut arc_to_calculate: Option<Arc<Mutex<Option<V>>>> = None;
+        let arc_to_calculate: Arc<RwLock<Option<V>>> = Arc::new(RwLock::new(None));
 
-        {
-            let mut guard = self.values.lock().await;
-            if guard.contains_key(&key) {
-                match guard.get(&key).unwrap().lock().await.as_ref() {
-                    None => {}
-                    Some(value) => return Ok(value.clone()),
-                };
+        let values_clone = self.values.clone();
+        let arc_to_calculate_clone = arc_to_calculate.clone();
+        let key_clone = key.clone();
+        let spawn = tokio::task::spawn(async move {
+            let mut guard = values_clone.lock().await;
+            if guard.contains_key(&key_clone) {
+                return guard
+                    .get(&key_clone)
+                    .unwrap()
+                    .read()
+                    .await
+                    .as_ref()
+                    .cloned();
             }
-            arc_to_calculate.replace(Arc::new(Mutex::new(None)));
-            guard.insert(key.clone(), arc_to_calculate.as_ref().unwrap().clone());
+            guard.insert(key_clone, arc_to_calculate_clone);
+            None
+        })
+        .await;
+
+        match spawn.unwrap() {
+            None => {}
+            Some(value) => return Ok(value),
         }
 
-        let mutex = arc_to_calculate.as_ref().unwrap().clone();
-        let mut lock = mutex.lock().await;
+        let mutex = self.values.clone().lock().await.get(&key).unwrap().clone();
+        let mut lock = mutex.write_owned().await;
 
         if lock.is_some() {
             return Ok(lock.as_ref().unwrap().clone());
@@ -52,7 +70,7 @@ impl<K, V> Cache<K, V> {
 impl<K, V> Cache<K, V> {
     pub fn new() -> Self {
         Self {
-            values: Mutex::new(HashMap::new()),
+            values: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -64,6 +82,7 @@ mod tests {
     use std::time::Duration;
 
     use futures::future::join;
+    use rand::Rng;
     use tokio::spawn;
     use tokio::time::sleep;
 
@@ -93,9 +112,9 @@ mod tests {
         let first = spawn(async move {
             cache_first
                 .get_or_try_init("key".to_owned(), || async move {
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     calculations_first.fetch_add(1, Ordering::Relaxed);
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     ok(1_u8)
                 })
                 .await
@@ -104,9 +123,9 @@ mod tests {
         let second = spawn(async move {
             cache_second
                 .get_or_try_init("key".to_owned(), || async move {
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     calculations_second.fetch_add(1, Ordering::Relaxed);
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     ok(1_u8)
                 })
                 .await
@@ -132,9 +151,9 @@ mod tests {
         let first = spawn(async move {
             cache_first
                 .get_or_try_init("key".to_owned(), || async move {
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     calculations_first.fetch_add(1, Ordering::Relaxed);
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     Err(())
                 })
                 .await
@@ -143,9 +162,9 @@ mod tests {
         let second = spawn(async move {
             cache_second
                 .get_or_try_init("key".to_owned(), || async move {
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     calculations_second.fetch_add(1, Ordering::Relaxed);
-                    sleep(Duration::from_millis(100)).await;
+                    sleep(Duration::from_millis(random())).await;
                     Err(())
                 })
                 .await
@@ -161,5 +180,8 @@ mod tests {
     #[allow(clippy::unnecessary_wraps)]
     fn ok<T>(val: T) -> Result<T, ()> {
         Ok(val)
+    }
+    fn random() -> u64 {
+        rand::thread_rng().gen_range(100..200)
     }
 }
