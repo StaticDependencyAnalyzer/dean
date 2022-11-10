@@ -10,8 +10,8 @@ mod pkg;
 use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
-use futures::future::join_all;
 
+use futures::future::join_all;
 use log::{error, info, warn, LevelFilter};
 use tokio::fs::File;
 use tokio_stream::StreamExt;

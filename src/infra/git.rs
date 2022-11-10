@@ -142,7 +142,8 @@ impl Repository {
             let temp_dir = tempfile::tempdir().context("unable to create temp dir")?;
             let repository = git2::build::RepoBuilder::new()
                 .bare(true)
-                .clone(&url, temp_dir.path()).context("unable to clone repository")?;
+                .clone(&url, temp_dir.path())
+                .context("unable to clone repository")?;
 
             Ok(Repository {
                 repository,

@@ -1,7 +1,6 @@
-
 use std::sync::Arc;
-use anyhow::anyhow;
 
+use anyhow::anyhow;
 use async_trait::async_trait;
 
 use crate::pkg::policy::ContributionDataRetriever;
@@ -19,7 +18,8 @@ impl Policy for MaxPullRequestLifespan {
         let issue_lifespan = self
             .contribution_data_retriever
             .get_pull_request_lifespan(&dependency.repository, self.last_issues)
-            .await.map_err(|e| anyhow!("error retrieving pull request lifespan: {}", e))?;
+            .await
+            .map_err(|e| anyhow!("error retrieving pull request lifespan: {}", e))?;
 
         if issue_lifespan > self.max_issue_lifespan {
             let fail_score = if self.max_issue_lifespan == 0.0 {

@@ -1,4 +1,3 @@
-
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -23,7 +22,11 @@ impl Policy for MinNumberOfReleasesRequired {
             .repository
             .url()
             .context("the repository did not contain a URL")?;
-        let all_tags = self.retriever.all_tags(&repository_url).await.map_err(|e| anyhow!("error retrieving all tags: {}", e))?;
+        let all_tags = self
+            .retriever
+            .all_tags(&repository_url)
+            .await
+            .map_err(|e| anyhow!("error retrieving all tags: {}", e))?;
 
         let now = self.clock.now_timestamp();
         let num_tags_in_range = all_tags

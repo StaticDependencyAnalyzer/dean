@@ -39,7 +39,8 @@ impl Policy for ContributorsRatio {
             .map_err(|e| {
                 anyhow!(
                     "unable to retrieve commits for each tag for repo {}: {}",
-                    &repo_url, e
+                    &repo_url,
+                    e
                 )
             })?;
 
