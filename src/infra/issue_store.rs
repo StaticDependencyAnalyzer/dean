@@ -52,7 +52,7 @@ impl IssueStore for Sqlite {
         ).unwrap();
 
         let rows = stmt
-            .query_map(&[provider, organization, repo], |row| {
+            .query_map([provider, organization, repo], |row| {
                 let value_str: String = row.get(0)?;
                 let value: Value = serde_json::from_str(&value_str)
                     .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
@@ -84,7 +84,7 @@ impl IssueStore for Sqlite {
                 "INSERT OR IGNORE INTO issuestore_issue (provider, organization, repo, issue_body) VALUES (?, ?, ?, ?)",
             ).unwrap();
             for issue in issues {
-                stmt.execute(&[
+                stmt.execute([
                     provider,
                     organization,
                     repo,
@@ -109,7 +109,7 @@ impl IssueStore for Sqlite {
         ).unwrap();
 
         let rows = stmt
-            .query_map(&[provider, organization, repo], |row| {
+            .query_map([provider, organization, repo], |row| {
                 let value_str: String = row.get(0)?;
                 let value: Value = serde_json::from_str(&value_str)
                     .map_err(|e| rusqlite::Error::InvalidParameterName(e.to_string()))?;
@@ -141,7 +141,7 @@ impl IssueStore for Sqlite {
                 "INSERT OR IGNORE INTO issuestore_pullrequest (provider, organization, repo, pullrequest_body) VALUES (?, ?, ?, ?)",
             ).unwrap();
             for pr in pull_requests {
-                stmt.execute(&[
+                stmt.execute([
                     provider,
                     organization,
                     repo,

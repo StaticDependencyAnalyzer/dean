@@ -1,8 +1,8 @@
 use std::collections::HashSet;
-use std::error::Error;
 use std::sync::Arc;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
+use async_trait::async_trait;
 use itertools::Itertools;
 
 use crate::pkg::policy::{CommitRetriever, Evaluation, Policy};
@@ -14,9 +14,10 @@ pub struct ContributorsRatio {
     max_contributor_ratio: f64,
 }
 
+#[async_trait]
 impl Policy for ContributorsRatio {
     #[allow(clippy::cast_precision_loss)]
-    fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error> {
         let repo_url = dependency
             .repository
             .url()
@@ -25,20 +26,23 @@ impl Policy for ContributorsRatio {
         let all_tags = self
             .retriever
             .all_tags(&repo_url)
-            .map_err(|e| format!("unable to retrieve all tags for repo {}: {}", &repo_url, e))?
+            .await
+            .map_err(|e| anyhow!("unable to retrieve all tags for repo {}: {}", &repo_url, e))?
             .into_iter();
         let tags_to_check = all_tags.rev().take(self.max_number_of_releases_to_check);
         let tag_names = tags_to_check.map(|tag| tag.name).collect::<HashSet<_>>();
 
-        let all_commits_for_each_tag =
-            self.retriever
-                .commits_for_each_tag(&repo_url)
-                .map_err(|e| {
-                    format!(
-                        "unable to retrieve commits for each tag for repo {}: {}",
-                        &repo_url, e
-                    )
-                })?;
+        let all_commits_for_each_tag = self
+            .retriever
+            .commits_for_each_tag(&repo_url)
+            .await
+            .map_err(|e| {
+                anyhow!(
+                    "unable to retrieve commits for each tag for repo {}: {}",
+                    &repo_url,
+                    e
+                )
+            })?;
 
         let commits_to_check = all_commits_for_each_tag
             .into_iter()
@@ -106,8 +110,9 @@ mod tests {
     use super::*;
     use crate::pkg::Repository::GitHub;
 
-    #[test]
-    fn if_the_contributor_ratio_for_the_latest_release_is_lower_than_90_percent_it_should_pass() {
+    #[tokio::test]
+    async fn if_the_contributor_ratio_for_the_latest_release_is_lower_than_90_percent_it_should_pass(
+    ) {
         let retriever = {
             let mut retriever = MockCommitRetriever::new();
             retriever
@@ -166,15 +171,16 @@ mod tests {
             },
             ..Dependency::default()
         };
-        let result = contributors_ratio_policy.evaluate(&dependency);
+        let result = contributors_ratio_policy.evaluate(&dependency).await;
 
         assert_eq!(
             result.unwrap(),
             Evaluation::Pass("contributors_ratio".to_string(), dependency.clone())
         );
     }
-    #[test]
-    fn if_the_contributor_ratio_for_the_latest_release_is_higher_than_90_percent_it_should_fail() {
+    #[tokio::test]
+    async fn if_the_contributor_ratio_for_the_latest_release_is_higher_than_90_percent_it_should_fail(
+    ) {
         let retriever = {
             let mut retriever = MockCommitRetriever::new();
             retriever
@@ -226,7 +232,7 @@ mod tests {
             ..Dependency::default()
         };
 
-        let result = contributors_ratio_policy.evaluate(&dependency);
+        let result = contributors_ratio_policy.evaluate(&dependency).await;
 
         match result.unwrap() {
             Evaluation::Fail(policy, dep, reason, score) => {

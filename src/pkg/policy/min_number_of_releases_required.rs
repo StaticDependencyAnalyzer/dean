@@ -1,8 +1,8 @@
-use std::error::Error;
 use std::sync::Arc;
 use std::time::Duration;
 
-use anyhow::Context;
+use anyhow::{anyhow, Context};
+use async_trait::async_trait;
 
 use super::{Clock, CommitRetriever, Evaluation};
 use crate::pkg::policy::Policy;
@@ -15,13 +15,18 @@ pub struct MinNumberOfReleasesRequired {
     clock: Box<dyn Clock>,
 }
 
+#[async_trait]
 impl Policy for MinNumberOfReleasesRequired {
-    fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error> {
         let repository_url = dependency
             .repository
             .url()
             .context("the repository did not contain a URL")?;
-        let all_tags = self.retriever.all_tags(&repository_url)?;
+        let all_tags = self
+            .retriever
+            .all_tags(&repository_url)
+            .await
+            .map_err(|e| anyhow!("error retrieving all tags: {}", e))?;
 
         let now = self.clock.now_timestamp();
         let num_tags_in_range = all_tags
@@ -86,8 +91,9 @@ mod tests {
     use crate::pkg::Repository::GitHub;
     use crate::Dependency;
 
-    #[test]
-    fn when_there_are_more_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
+    #[tokio::test]
+    async fn when_there_are_more_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation(
+    ) {
         let retriever = {
             let mut retriever = MockCommitRetriever::new();
             retriever
@@ -132,8 +138,8 @@ mod tests {
             },
             ..Dependency::default()
         };
-        let result: Result<Evaluation, Box<dyn Error>> =
-            number_of_releases_policy.evaluate(&dependency);
+        let result: Result<Evaluation, anyhow::Error> =
+            number_of_releases_policy.evaluate(&dependency).await;
 
         assert_eq!(
             result.unwrap(),
@@ -141,8 +147,9 @@ mod tests {
         );
     }
 
-    #[test]
-    fn when_there_are_less_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation() {
+    #[tokio::test]
+    async fn when_there_are_less_than_2_releases_in_last_6_months_it_should_pass_the_policy_evaluation(
+    ) {
         let retriever = {
             let mut retriever = MockCommitRetriever::new();
             retriever
@@ -174,8 +181,8 @@ mod tests {
             },
             ..Dependency::default()
         };
-        let result: Result<Evaluation, Box<dyn Error>> =
-            number_of_releases_policy.evaluate(&dependency);
+        let result: Result<Evaluation, anyhow::Error> =
+            number_of_releases_policy.evaluate(&dependency).await;
 
         assert_eq!(
             result.unwrap(),
@@ -188,8 +195,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn when_the_releases_are_too_old_it_should_pass_the_policy_evaluation() {
+    #[tokio::test]
+    async fn when_the_releases_are_too_old_it_should_pass_the_policy_evaluation() {
         let retriever = {
             let mut retriever = MockCommitRetriever::new();
             retriever
@@ -234,8 +241,8 @@ mod tests {
             },
             ..Dependency::default()
         };
-        let result: Result<Evaluation, Box<dyn Error>> =
-            number_of_releases_policy.evaluate(&dependency);
+        let result: Result<Evaluation, anyhow::Error> =
+            number_of_releases_policy.evaluate(&dependency).await;
 
         assert_eq!(
             result.unwrap(),

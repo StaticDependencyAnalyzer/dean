@@ -1,32 +1,33 @@
 use std::sync::Arc;
 
 use anyhow::Context;
+use async_trait::async_trait;
 use serde_json::{Map, Value};
 
 use crate::pkg::Repository;
 
 #[derive(Default)]
 pub struct InfoRetriever {
-    client: Arc<reqwest::blocking::Client>,
+    client: Arc<reqwest::Client>,
 }
 
 impl InfoRetriever {
     pub fn new<C>(client: C) -> Self
     where
-        C: Into<Arc<reqwest::blocking::Client>>,
+        C: Into<Arc<reqwest::Client>>,
     {
         Self {
             client: client.into(),
         }
     }
 
-    fn make_request(&self, dependency: &str) -> Result<Map<String, Value>, String> {
+    async fn make_request(&self, dependency: &str) -> Result<Map<String, Value>, String> {
         let result: Value = self
             .client
             .get(&format!("https://crates.io/api/v1/crates/{}", dependency))
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
-            .send().context("unable to request crates.io").map_err(|e| e.to_string())?
-            .json().context("unable to parse crates.io response").map_err(|e| e.to_string())?;
+            .send().await.context("unable to request crates.io").map_err(|e| e.to_string())?
+            .json().await.context("unable to parse crates.io response").map_err(|e| e.to_string())?;
 
         if !result.is_object() {
             return Err(format!(
@@ -39,9 +40,10 @@ impl InfoRetriever {
     }
 }
 
+#[async_trait]
 impl crate::pkg::InfoRetriever for InfoRetriever {
-    fn latest_version(&self, dependency: &str) -> Result<String, String> {
-        let response_object = self.make_request(dependency)?;
+    async fn latest_version(&self, dependency: &str) -> Result<String, String> {
+        let response_object = self.make_request(dependency).await?;
 
         let crate_info = response_object
             .get("crate")
@@ -57,8 +59,8 @@ impl crate::pkg::InfoRetriever for InfoRetriever {
             .map(std::string::ToString::to_string)
     }
 
-    fn repository(&self, dependency: &str) -> Result<Repository, String> {
-        let response_object = self.make_request(dependency)?;
+    async fn repository(&self, dependency: &str) -> Result<Repository, String> {
+        let response_object = self.make_request(dependency).await?;
 
         let crate_info = response_object
             .get("crate")
@@ -81,20 +83,20 @@ mod tests {
     use super::*;
     use crate::pkg::InfoRetriever as _;
 
-    #[test]
-    fn it_retrieves_the_latest_version_of_yaml_rust() {
+    #[tokio::test]
+    async fn it_retrieves_the_latest_version_of_yaml_rust() {
         let retriever = InfoRetriever::default();
 
-        let result = retriever.latest_version("yaml-rust");
+        let result = retriever.latest_version("yaml-rust").await;
 
         assert_eq!(result.unwrap(), "0.4.5");
     }
 
-    #[test]
-    fn it_retrieves_the_repository_of_serde() {
+    #[tokio::test]
+    async fn it_retrieves_the_repository_of_serde() {
         let retriever = InfoRetriever::default();
 
-        let result = retriever.repository("serde");
+        let result = retriever.repository("serde").await;
 
         assert_eq!(
             result.unwrap(),

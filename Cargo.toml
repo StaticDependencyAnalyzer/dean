@@ -23,22 +23,27 @@ serde = { version = "1.0.136", features = ["derive"] }
 serde_json = "1.0.78"
 toml = "0.5.9"
 clap = { version = "3.1.6", features = ["derive"] }
-reqwest = { version = "0.11.9", features = ["blocking", "json"] }
+reqwest = { version = "0.11.9", features = ["json"] }
 regex = "1.5.5"
-rayon = "1.5.1"
 log = "0.4.14"
 simple_logger = "2.1.0"
-git2 = { version = "0.15.0", features = ["vendored-openssl"] }
+git2 = { version = "0.15.0", features = ["vendored-libgit2", "vendored-openssl"] }
 tempfile = "3.3.0"
 anyhow = "1.0.56"
 itertools = "0.10.3"
 serde_yaml = "0.9.4"
 dirs-next = "2.0.0"
-concurrent_lru = "0.2.0"
 lazy_static = "1.4.0"
-csv = "1.1.6"
 time = { version = "0.3.9", features = ["parsing"] }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
+tokio = { version = "1.21.2", features = ["full"] }
+async-trait = "0.1.57"
+csv-async = { version = "1.2.4", features = ["tokio"] }
+tokio-stream = "0.1.11"
+moka = { version = "0.9.4", features = ["future"] }
+async-recursion = "1.0.0"
+futures = "0.3.25"
 
 [dev-dependencies]
 mockall = "0.11.0"
+rand = "0.8.5"

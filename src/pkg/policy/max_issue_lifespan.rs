@@ -1,5 +1,7 @@
-use std::error::Error;
 use std::sync::Arc;
+
+use anyhow::anyhow;
+use async_trait::async_trait;
 
 use crate::pkg::policy::ContributionDataRetriever;
 use crate::{Dependency, Evaluation, Policy};
@@ -10,11 +12,14 @@ pub struct MaxIssueLifespan {
     contribution_data_retriever: Arc<dyn ContributionDataRetriever>,
 }
 
+#[async_trait]
 impl Policy for MaxIssueLifespan {
-    fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>> {
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error> {
         let issue_lifespan = self
             .contribution_data_retriever
-            .get_issue_lifespan(&dependency.repository, self.last_issues)?;
+            .get_issue_lifespan(&dependency.repository, self.last_issues)
+            .await
+            .map_err(|e| anyhow!("error retrieving issue lifespan: {}", e))?;
 
         if issue_lifespan > self.max_issue_lifespan {
             let fail_score = if self.max_issue_lifespan == 0.0 {
@@ -53,8 +58,8 @@ mod tests {
     use crate::pkg::Repository::GitHub;
     use crate::{Dependency, Evaluation};
 
-    #[test]
-    fn it_passes_if_the_issue_lifetime_is_lower_than_the_maximum_allowed() {
+    #[tokio::test]
+    async fn it_passes_if_the_issue_lifetime_is_lower_than_the_maximum_allowed() {
         let retriever = {
             let mut retriever = MockContributionDataRetriever::new();
             retriever
@@ -66,15 +71,15 @@ mod tests {
         let max_allowed_issue_lifespan = 100_f64;
         let issue_lifespan = MaxIssueLifespan::new(retriever, max_allowed_issue_lifespan, 100);
 
-        let evaluation = issue_lifespan.evaluate(&dependency());
+        let evaluation = issue_lifespan.evaluate(&dependency()).await;
         assert_eq!(
             evaluation.unwrap(),
             Evaluation::Pass("max_issue_lifespan".to_string(), dependency(),)
         );
     }
 
-    #[test]
-    fn it_fails_if_the_issue_lifetime_is_higher_than_the_maximum_expected() {
+    #[tokio::test]
+    async fn it_fails_if_the_issue_lifetime_is_higher_than_the_maximum_expected() {
         let retriever = {
             let mut retriever = MockContributionDataRetriever::new();
             retriever
@@ -86,7 +91,7 @@ mod tests {
         let max_allowed_issue_lifespan = 100_f64;
         let issue_lifespan = MaxIssueLifespan::new(retriever, max_allowed_issue_lifespan, 100);
 
-        let evaluation = issue_lifespan.evaluate(&dependency());
+        let evaluation = issue_lifespan.evaluate(&dependency()).await;
         match evaluation.unwrap() {
             Evaluation::Fail(policy, dep, reason, score) => {
                 assert_eq!(policy, "max_issue_lifespan");

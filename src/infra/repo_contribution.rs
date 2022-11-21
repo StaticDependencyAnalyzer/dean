@@ -1,8 +1,10 @@
 use std::error::Error;
 use std::sync::Arc;
 
+use async_trait::async_trait;
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+use tokio_stream::StreamExt;
 
 use crate::infra::cached_issue_client::{CachedClient, IssueClient, IssueStore};
 use crate::infra::github;
@@ -29,15 +31,25 @@ impl Retriever {
         }
     }
 
-    fn get_github_issue_lifespan(&self, organization: &str, repo: &str, last_issues: usize) -> f64 {
-        let issues = self
+    async fn get_github_issue_lifespan(
+        &self,
+        organization: &str,
+        repo: &str,
+        last_issues: usize,
+    ) -> f64 {
+        let mut issues = self
             .github_cached_client
-            .get_last_issues(organization, repo, last_issues);
+            .get_last_issues(organization, repo, last_issues)
+            .await;
 
-        let closed_issues =
-            issues.filter(|issue| issue.get("state").unwrap().as_str().unwrap() == "closed");
+        let mut closed_issues = Vec::new();
+        while let Some(issue) = issues.next().await {
+            if issue.get("state").unwrap().as_str().unwrap() == "closed" {
+                closed_issues.push(issue);
+            }
+        }
 
-        let lifespan_per_issue = closed_issues.map(|issue| {
+        let lifespan_per_issue = closed_issues.into_iter().map(|issue| {
             let created_at_str = issue.get("created_at").unwrap().as_str().unwrap();
             let closed_at_str = issue.get("closed_at").unwrap().as_str().unwrap();
 
@@ -51,19 +63,25 @@ impl Retriever {
         lifespan_per_issue.mean()
     }
 
-    fn get_github_pull_request_lifespan(
+    async fn get_github_pull_request_lifespan(
         &self,
         organization: &str,
         repo: &str,
         last_pull_requests: usize,
     ) -> f64 {
-        let prs =
-            self.github_cached_client
-                .get_pull_requests(organization, repo, last_pull_requests);
+        let mut prs = self
+            .github_cached_client
+            .get_pull_requests(organization, repo, last_pull_requests)
+            .await;
 
-        let closed_prs = prs.filter(|pr| pr.get("state").unwrap().as_str().unwrap() == "closed");
+        let mut closed_prs = Vec::new();
+        while let Some(pr) = prs.next().await {
+            if pr.get("state").unwrap().as_str().unwrap() == "closed" {
+                closed_prs.push(pr);
+            }
+        }
 
-        let lifespan_per_pr = closed_prs.map(|pr| {
+        let lifespan_per_pr = closed_prs.into_iter().map(|pr| {
             let created_at_str = pr.get("created_at").unwrap().as_str().unwrap();
             let closed_at_str = pr.get("closed_at").unwrap().as_str().unwrap();
 
@@ -94,31 +112,32 @@ where
     }
 }
 
+#[async_trait]
 impl ContributionDataRetriever for Retriever {
-    fn get_issue_lifespan(
+    async fn get_issue_lifespan(
         &self,
         repository: &Repository,
         last_issues: usize,
     ) -> Result<f64, Box<dyn Error>> {
         match repository {
             Repository::Unknown => Err("unknown repository".into()),
-            Repository::GitHub { name, organization } => {
-                Ok(self.get_github_issue_lifespan(organization, name, last_issues))
-            }
+            Repository::GitHub { name, organization } => Ok(self
+                .get_github_issue_lifespan(organization, name, last_issues)
+                .await),
             Repository::GitLab { .. } | Repository::Raw { .. } => Err("not implemented".into()),
         }
     }
 
-    fn get_pull_request_lifespan(
+    async fn get_pull_request_lifespan(
         &self,
         repository: &Repository,
         last_pull_requests: usize,
     ) -> Result<f64, Box<dyn Error>> {
         match repository {
             Repository::Unknown => Err("unknown repository".into()),
-            Repository::GitHub { name, organization } => {
-                Ok(self.get_github_pull_request_lifespan(organization, name, last_pull_requests))
-            }
+            Repository::GitHub { name, organization } => Ok(self
+                .get_github_pull_request_lifespan(organization, name, last_pull_requests)
+                .await),
             Repository::GitLab { .. } | Repository::Raw { .. } => Err("not implemented".into()),
         }
     }
@@ -131,9 +150,9 @@ mod tests {
     use crate::infra::github::Authentication;
     use crate::pkg::Repository;
 
-    #[test]
-    fn it_retrieves_the_issue_lifespan_of_dean() {
-        let http_client = reqwest::blocking::Client::default();
+    #[tokio::test]
+    async fn it_retrieves_the_issue_lifespan_of_dean() {
+        let http_client = reqwest::Client::default();
         let github_client = github::Client::new(http_client, authentication());
         let issue_store = mock_issue_store();
         let retriever = Retriever::new(github_client, issue_store);
@@ -146,6 +165,7 @@ mod tests {
                 },
                 10,
             )
+            .await
             .unwrap();
 
         let two_months_in_seconds = 1.0 * 30.0 * 24.0 * 60.0 * 60.0;
@@ -154,9 +174,9 @@ mod tests {
         assert!(issue_lifespan < three_months_in_seconds);
     }
 
-    #[test]
-    fn it_retrieves_the_pull_request_lifespan_of_dean() {
-        let http_client = reqwest::blocking::Client::default();
+    #[tokio::test]
+    async fn it_retrieves_the_pull_request_lifespan_of_dean() {
+        let http_client = reqwest::Client::default();
         let github_client = github::Client::new(http_client, authentication());
         let issue_store = mock_issue_store();
         let retriever = Retriever::new(github_client, issue_store);
@@ -169,12 +189,13 @@ mod tests {
                 },
                 10,
             )
+            .await
             .unwrap();
 
         let two_minutes_in_seconds = 2.0 * 60.0;
-        let one_day_in_seconds = 1.0 * 24.0 * 60.0 * 60.0;
+        let three_days_in_seconds = 3.0 * 24.0 * 60.0 * 60.0;
         assert!(pr_lifespan > two_minutes_in_seconds);
-        assert!(pr_lifespan < one_day_in_seconds);
+        assert!(pr_lifespan < three_days_in_seconds);
     }
 
     fn mock_issue_store() -> Box<dyn IssueStore> {

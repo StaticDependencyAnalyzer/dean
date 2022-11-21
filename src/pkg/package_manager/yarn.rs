@@ -1,14 +1,17 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
+use async_trait::async_trait;
+use futures::Stream;
 use itertools::Itertools;
-use log::info;
+use tokio::io::AsyncReadExt;
+use tokio::sync::Mutex;
 
 use crate::pkg::{DependencyRetriever, InfoRetriever, Repository};
 use crate::Dependency;
 
 pub struct DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin,
 {
     npm_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
@@ -16,7 +19,7 @@ where
 
 impl<T> DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin,
 {
     pub fn new<R>(reader: T, retriever: R) -> Self
     where
@@ -29,22 +32,15 @@ where
     }
 }
 
+#[async_trait]
 impl<T> DependencyRetriever for DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
+    type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
 
-    fn dependencies(&self) -> Result<Self::Itr, String> {
-        let content = {
-            let mut bytes = Vec::new();
-            self.reader
-                .lock()
-                .unwrap()
-                .read_to_end(&mut bytes)
-                .map_err(|e| e.to_string())?;
-            String::from_utf8_lossy(&bytes).into_owned()
-        };
+    async fn dependencies(&self) -> Result<Self::Itr, String> {
+        let content = self.content_from_reader().await?;
 
         let not_comment_lines = content.lines().filter(|line| !line.trim().starts_with('#'));
 
@@ -63,7 +59,7 @@ where
         let dependency_info_tuples = dependency_lines_grouped
             .into_iter()
             .map(|lines| {
-                let dependency_line: String = lines.get(0).unwrap().replace('\"', "");
+                let dependency_line: String = lines.first().unwrap().replace('\"', "");
                 let mut dependency_name = dependency_line.split_once('@').unwrap().0.to_owned();
                 if dependency_name.is_empty() {
                     dependency_name = format!(
@@ -88,39 +84,63 @@ where
             })
             .collect_vec();
 
-        let npm_info_retriever = self.npm_info_retriever.clone();
-        let dependencies =
-            dependency_info_tuples
-                .into_iter()
-                .map(move |(dependency_name, dependency_version)| {
-                    info!(
-                        target: "dean::yarn-dependency-retriever",
-                        "retrieving information for dependency [name={}, version={}]",
-                        dependency_name, dependency_version
-                    );
-                    Dependency {
-                        latest_version: npm_info_retriever.latest_version(&dependency_name).ok(),
-                        repository: npm_info_retriever
-                            .repository(&dependency_name)
-                            .unwrap_or(Repository::Unknown),
-                        name: dependency_name,
-                        version: dependency_version,
-                    }
-                });
+        struct StreamStatus {
+            name_and_versions_to_retrieve: Vec<(String, String)>,
+            retriever: Arc<dyn InfoRetriever>,
+        }
 
-        Ok(Box::new(dependencies))
+        let status = StreamStatus {
+            name_and_versions_to_retrieve: dependency_info_tuples,
+            retriever: self.npm_info_retriever.clone(),
+        };
+
+        let unfold = futures::stream::unfold(status, |mut status| async move {
+            if let Some((name, version)) = status.name_and_versions_to_retrieve.pop() {
+                let dependency = Dependency {
+                    name: name.clone(),
+                    version: version.clone(),
+                    latest_version: status.retriever.latest_version(&name).await.ok(),
+                    repository: status
+                        .retriever
+                        .repository(&name)
+                        .await
+                        .unwrap_or(Repository::Unknown),
+                };
+                Some((dependency, status))
+            } else {
+                None
+            }
+        });
+        Ok(Box::new(Box::pin(unfold)))
+    }
+}
+
+impl<T> DependencyReader<T>
+where
+    T: Unpin + tokio::io::AsyncRead + Send,
+{
+    async fn content_from_reader(&self) -> Result<String, String> {
+        let mut bytes = Vec::new();
+        self.reader
+            .lock()
+            .await
+            .read_to_end(&mut bytes)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use mockall::predicate::eq;
+    use tokio_stream::StreamExt;
 
     use super::*;
     use crate::pkg::{MockInfoRetriever, Repository};
 
-    #[test]
-    fn it_retrieves_all_the_dependencies() {
+    #[tokio::test]
+    async fn it_retrieves_all_the_dependencies() {
         let retriever: Box<dyn InfoRetriever> = {
             let mut retriever = Box::new(MockInfoRetriever::new());
             retriever
@@ -146,9 +166,9 @@ mod tests {
         };
 
         let dependency_reader = DependencyReader::new(yarn_lock_file(), retriever);
-        let dependencies = dependency_reader.dependencies();
+        let dependencies = dependency_reader.dependencies().await;
 
-        let deps = dependencies.unwrap().collect::<Vec<_>>();
+        let deps = dependencies.unwrap().collect::<Vec<_>>().await;
         let webpack_dependency = deps.iter().find(|dep| dep.name == "webpack").unwrap();
         let gen_mapping_dependency = deps
             .iter()
@@ -180,6 +200,6 @@ mod tests {
     }
 
     fn yarn_lock_file() -> &'static [u8] {
-        return include_bytes!("../../../tests/fixtures/yarn.lock");
+        include_bytes!("../../../tests/fixtures/yarn.lock")
     }
 }

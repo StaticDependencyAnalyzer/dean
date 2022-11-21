@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::sync::Arc;
 
-use anyhow::Context;
-use concurrent_lru::sharded::LruCache;
+use anyhow::{anyhow, Context};
+use async_trait::async_trait;
 use git2::Oid;
 
+use crate::infra::cache::Cache;
 use crate::pkg::policy::{Commit, CommitRetriever, Tag};
 
 #[derive(Clone)]
@@ -16,62 +17,75 @@ struct RepositoryResult {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait CommitStore: Send + Sync {
-    fn get_commits_for_each_tag(
+    async fn get_commits_for_each_tag(
         &self,
         repository_url: &str,
     ) -> Option<HashMap<String, Vec<Commit>>>;
-    fn save_commits_for_each_tag(
+    async fn save_commits_for_each_tag(
         &self,
         repository_url: &str,
         commits_for_each_tag: &HashMap<String, Vec<Commit>>,
     ) -> Result<(), Box<dyn Error>>;
 
-    fn get_all_tags(&self, repository_url: &str) -> Option<Vec<Tag>>;
-    fn save_all_tags(&self, repository_url: &str, all_tags: &[Tag]) -> Result<(), Box<dyn Error>>;
+    async fn get_all_tags(&self, repository_url: &str) -> Option<Vec<Tag>>;
+    async fn save_all_tags(
+        &self,
+        repository_url: &str,
+        all_tags: &[Tag],
+    ) -> Result<(), Box<dyn Error>>;
 }
 
 pub struct RepositoryRetriever {
-    cache: LruCache<String, RepositoryResult>,
+    cache: Cache<String, RepositoryResult>,
     commit_store: Arc<dyn CommitStore>,
 }
 
+#[async_trait]
 impl CommitRetriever for RepositoryRetriever {
-    fn commits_for_each_tag(
+    async fn commits_for_each_tag(
         &self,
         repository_url: &str,
     ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
         self.cache
-            .get_or_try_init(repository_url.to_string(), 1, |url| {
-                self.repository_result_from_url(url)
+            .get_or_try_init(repository_url.to_string(), || async move {
+                self.repository_result_from_url(repository_url).await
             })
-            .map(|handle| handle.value().commits_for_each_tag.clone())
+            .await
+            .map(|handle| handle.commits_for_each_tag)
+            .map_err(std::convert::Into::into)
     }
 
-    fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
+    async fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
         self.cache
-            .get_or_try_init(repository_url.to_string(), 1, |url| {
-                self.repository_result_from_url(url)
+            .get_or_try_init(repository_url.to_string(), || async move {
+                self.repository_result_from_url(repository_url).await
             })
-            .map(|handle| handle.value().all_tags.clone())
+            .await
+            .map(|handle| handle.all_tags)
+            .map_err(std::convert::Into::into)
     }
 }
 
 impl RepositoryRetriever {
     pub fn new<T: Into<Arc<dyn CommitStore>>>(commit_store: T) -> Self {
-        let cache = LruCache::new(1000);
+        let cache = Cache::new();
         Self {
             cache,
             commit_store: commit_store.into(),
         }
     }
 
-    fn repository_result_from_url(
+    async fn repository_result_from_url(
         &self,
         repository_url: &str,
-    ) -> Result<RepositoryResult, Box<dyn Error>> {
-        let commits_for_each_tag = self.commit_store.get_commits_for_each_tag(repository_url);
-        let all_tags = self.commit_store.get_all_tags(repository_url);
+    ) -> Result<RepositoryResult, anyhow::Error> {
+        let commits_for_each_tag = self
+            .commit_store
+            .get_commits_for_each_tag(repository_url)
+            .await;
+        let all_tags = self.commit_store.get_all_tags(repository_url).await;
 
         if let Some(commits) = &commits_for_each_tag {
             if let Some(tags) = &all_tags {
@@ -83,22 +97,29 @@ impl RepositoryRetriever {
         }
 
         let repository = Repository::new(repository_url)
-            .map_err(|e| format!("unable to create repository: {}", e))?;
-        let commits_for_each_tag_in_repository = repository.commits_for_each_tag()?;
-        let all_tags_in_repository = repository.all_tags()?;
+            .await
+            .map_err(|e| anyhow!("unable to create repository: {}", e))?;
+        let commits_for_each_tag_in_repository = repository
+            .commits_for_each_tag()
+            .map_err(|e| anyhow!("error retrieving commits for each tag: {}", e))?;
+        let all_tags_in_repository = repository
+            .all_tags()
+            .map_err(|e| anyhow!("error retrieving tags: {}", e))?;
 
         if commits_for_each_tag.is_none() {
             let commits_for_each_tag = commits_for_each_tag_in_repository.clone();
             self.commit_store
                 .save_commits_for_each_tag(repository_url, &commits_for_each_tag)
-                .map_err(|e| format!("unable to save commits for each tag: {}", e))?;
+                .await
+                .map_err(|e| anyhow!("unable to save commits for each tag: {}", e))?;
         }
 
         if all_tags.is_none() {
             let all_tags = all_tags_in_repository.clone();
             self.commit_store
                 .save_all_tags(repository_url, &all_tags)
-                .map_err(|e| format!("unable to save all tags: {}", e))?;
+                .await
+                .map_err(|e| anyhow!("unable to save all tags: {}", e))?;
         }
 
         Ok(RepositoryResult {
@@ -115,16 +136,23 @@ pub struct Repository {
 }
 
 impl Repository {
-    pub fn new(url: &str) -> Result<Self, Box<dyn Error>> {
-        let temp_dir = tempfile::tempdir()?;
-        let repository = git2::build::RepoBuilder::new()
-            .bare(true)
-            .clone(url, temp_dir.path())?;
+    pub async fn new(url: &str) -> Result<Self, Box<dyn Error>> {
+        let url = url.to_string();
+        let result: Result<Repository, anyhow::Error> = tokio::task::spawn_blocking(move || {
+            let temp_dir = tempfile::tempdir().context("unable to create temp dir")?;
+            let repository = git2::build::RepoBuilder::new()
+                .bare(true)
+                .clone(&url, temp_dir.path())
+                .context("unable to clone repository")?;
 
-        Ok(Repository {
-            repository,
-            temp_dir,
+            Ok(Repository {
+                repository,
+                temp_dir,
+            })
         })
+        .await?;
+
+        result.map_err(std::convert::Into::into)
     }
 
     fn commits_for_each_tag(&self) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
@@ -224,11 +252,13 @@ impl Repository {
 mod tests {
     use super::*;
 
-    #[test]
-    fn it_retrieves_the_tags_of_a_repository() {
-        let repository = Repository::new("https://github.com/libgit2/libgit2").unwrap();
+    #[tokio::test]
+    async fn it_retrieves_the_tags_of_a_repository() {
+        let repository = Repository::new("https://github.com/libgit2/libgit2")
+            .await
+            .expect("unable to create repository");
 
-        let tags = repository.all_tags().unwrap();
+        let tags = repository.all_tags().expect("unable to retrieve all tags");
 
         assert!(tags.len() >= 76);
         assert!(tags.contains(&Tag {
@@ -238,9 +268,11 @@ mod tests {
         }));
     }
 
-    #[test]
-    fn it_retrieves_commit_ids_for_each_tag_of_a_repository() {
-        let repository = Repository::new("https://github.com/libgit2/libgit2").unwrap();
+    #[tokio::test]
+    async fn it_retrieves_commit_ids_for_each_tag_of_a_repository() {
+        let repository = Repository::new("https://github.com/libgit2/libgit2")
+            .await
+            .unwrap();
 
         let commit_ids_for_each_tag = repository.commit_ids_for_each_tag().unwrap();
 
@@ -261,9 +293,11 @@ mod tests {
         );
     }
 
-    #[test]
-    fn it_retrieves_commit_for_each_tag_of_a_repository() {
-        let repository = Repository::new("https://github.com/libgit2/libgit2").unwrap();
+    #[tokio::test]
+    async fn it_retrieves_commit_for_each_tag_of_a_repository() {
+        let repository = Repository::new("https://github.com/libgit2/libgit2")
+            .await
+            .unwrap();
 
         let commits_for_each_tag = repository.commits_for_each_tag().unwrap();
 
@@ -280,8 +314,8 @@ mod tests {
         assert_eq!(commits_for_each_tag.get("v1.4.2").unwrap().len(), 6_usize);
     }
 
-    #[test]
-    fn it_retrieves_the_contents_of_the_repositories_and_stores_them_in_a_cache() {
+    #[tokio::test]
+    async fn it_retrieves_the_contents_of_the_repositories_and_stores_them_in_a_cache() {
         let commit_store: Box<dyn CommitStore> = mock_commit_store();
 
         let repository_retriever = RepositoryRetriever::new(commit_store);
@@ -289,11 +323,13 @@ mod tests {
 
         repository_retriever
             .commits_for_each_tag(repository_url)
+            .await
             .unwrap();
         let after_retrieving_instant = std::time::Instant::now();
 
         let commits_for_each_tag = repository_retriever
             .commits_for_each_tag(repository_url)
+            .await
             .unwrap();
         let after_second_retrieval_instant = std::time::Instant::now();
 
@@ -321,15 +357,23 @@ mod tests {
                 < 1
         );
 
-        assert!(repository_retriever.all_tags(repository_url).unwrap().len() >= 76);
+        assert!(
+            repository_retriever
+                .all_tags(repository_url)
+                .await
+                .unwrap()
+                .len()
+                >= 76
+        );
     }
 
-    #[test]
-    fn it_retrieves_the_tags_for_yocto_queue() {
+    #[tokio::test]
+    async fn it_retrieves_the_tags_for_yocto_queue() {
         let commit_store: Box<dyn CommitStore> = mock_commit_store();
         let repository_retriever = RepositoryRetriever::new(commit_store);
         let tags = repository_retriever
             .all_tags("https://github.com/sindresorhus/yocto-queue")
+            .await
             .unwrap();
 
         assert!(tags.len() >= 2_usize);

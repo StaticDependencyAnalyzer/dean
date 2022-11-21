@@ -1,26 +1,40 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use log::{error, info};
+use async_trait::async_trait;
+use futures::Stream;
+use log::error;
 use serde_json::Value;
+use tokio::io::{AsyncRead, AsyncReadExt};
+use tokio::sync::Mutex;
 
 use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
 pub struct DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: AsyncRead + Unpin + Send,
 {
     npm_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
 }
 
+#[async_trait]
 impl<T> DependencyRetriever for DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
-    fn dependencies(&self) -> Result<Self::Itr, String> {
-        let result: Value = serde_json::from_reader(&mut *self.reader.lock().unwrap())
-            .map_err(|e| e.to_string())?;
+    type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
+    async fn dependencies(&self) -> Result<Self::Itr, String> {
+        let content = {
+            let mut content = String::new();
+            self.reader
+                .lock()
+                .await
+                .read_to_string(&mut content)
+                .await
+                .map_err(|e| e.to_string())?;
+            content
+        };
+        let result: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
         let value = result["dependencies"].clone();
         if !value.is_object() {
@@ -41,28 +55,40 @@ where
                 }
             });
 
-        let npm_info_retriever = self.npm_info_retriever.clone();
-        let dependencies = deps.map(move |(name, version)| {
-            let retriever = npm_info_retriever.clone();
-            info!(
-                target: "dean::npm-dependency-retriever",
-                "retrieving information for dependency [name={}, version={}]",
-                name, version
-            );
-            Dependency {
-                latest_version: retriever.latest_version(&name).ok(),
-                repository: retriever.repository(&name).unwrap_or(Repository::Unknown),
-                name,
-                version,
+        struct StreamStatus {
+            name_and_versions_to_retrieve: Vec<(String, String)>,
+            retriever: Arc<dyn InfoRetriever>,
+        }
+
+        let status = StreamStatus {
+            name_and_versions_to_retrieve: deps.collect(),
+            retriever: self.npm_info_retriever.clone(),
+        };
+
+        let unfold = futures::stream::unfold(status, |mut status| async move {
+            if let Some((name, version)) = status.name_and_versions_to_retrieve.pop() {
+                let dependency = Dependency {
+                    name: name.clone(),
+                    version: version.clone(),
+                    latest_version: status.retriever.latest_version(&name).await.ok(),
+                    repository: status
+                        .retriever
+                        .repository(&name)
+                        .await
+                        .unwrap_or(Repository::Unknown),
+                };
+                Some((dependency, status))
+            } else {
+                None
             }
         });
-        Ok(Box::new(dependencies))
+        Ok(Box::new(Box::pin(unfold)))
     }
 }
 
 impl<T> DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: AsyncRead + Unpin + Send,
 {
     pub fn new<R>(reader: T, retriever: R) -> Self
     where
@@ -77,13 +103,15 @@ where
 
 #[cfg(test)]
 mod tests {
+    use futures::StreamExt;
     use mockall::predicate::eq;
 
     use super::*;
     use crate::pkg::{MockInfoRetriever, Repository};
+    use crate::Dependency;
 
-    #[test]
-    fn retrieves_all_dependencies() {
+    #[tokio::test]
+    async fn retrieves_all_dependencies() {
         let retriever = {
             let mut retriever = Box::new(MockInfoRetriever::new());
             retriever
@@ -105,10 +133,10 @@ mod tests {
         };
 
         let dependency_reader = DependencyReader::new(npm_package_lock(), retriever);
-        let dependencies = dependency_reader.dependencies();
+        let dependencies = dependency_reader.dependencies().await;
 
         assert_eq!(
-            dependencies.unwrap().next().unwrap(),
+            dependencies.unwrap().next().await.unwrap(),
             Dependency {
                 name: "colors".into(),
                 version: "1.4.0".into(),

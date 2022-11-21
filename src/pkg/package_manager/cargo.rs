@@ -1,31 +1,30 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use log::{error, info};
+use async_trait::async_trait;
+use log::error;
+use tokio::io::AsyncReadExt;
+use tokio::sync::Mutex;
+use tokio_stream::Stream;
 use toml::Value;
 
-use crate::pkg::Repository;
-use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever};
+use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
 
 pub struct DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
     cargo_info_retriever: Arc<dyn InfoRetriever>,
     reader: Mutex<T>,
 }
 
+#[async_trait]
 impl<T> DependencyRetriever for DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
-    type Itr = Box<dyn Iterator<Item = Dependency> + Send>;
-    fn dependencies(&self) -> Result<Self::Itr, String> {
-        let mut contents = Vec::new();
-        self.reader
-            .lock()
-            .unwrap()
-            .read_to_end(&mut contents)
-            .map_err(|e| e.to_string())?;
+    type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
+    async fn dependencies(&self) -> Result<Self::Itr, String> {
+        let contents = self.contents_from_reader().await?;
         let result: Value = toml::from_slice(&contents).map_err(|e| e.to_string())?;
 
         let packages = result
@@ -62,29 +61,56 @@ where
                 result.map_err(|e| error!("{}", e)).ok()
             });
 
-        let info_retriever = self.cargo_info_retriever.clone();
-        let dependencies = name_and_version_from_packages.map(move |(name, version)| {
-            info!(
-                target: "dean::cargo-dependency-retriever",
-                "retrieving information for dependency [name={}, version={}]",
-                name, &version
-            );
+        struct StreamStatus {
+            name_and_versions_to_retrieve: Vec<(String, String)>,
+            retriever: Arc<dyn InfoRetriever>,
+        }
 
-            let retriever = info_retriever.clone();
-            Dependency {
-                latest_version: retriever.latest_version(&name).ok(),
-                repository: retriever.repository(&name).unwrap_or(Repository::Unknown),
-                name,
-                version,
+        let status = StreamStatus {
+            name_and_versions_to_retrieve: name_and_version_from_packages.collect(),
+            retriever: self.cargo_info_retriever.clone(),
+        };
+
+        let unfold = futures::stream::unfold(status, |mut status| async move {
+            if let Some((name, version)) = status.name_and_versions_to_retrieve.pop() {
+                let dependency = Dependency {
+                    name: name.clone(),
+                    version: version.clone(),
+                    latest_version: status.retriever.latest_version(&name).await.ok(),
+                    repository: status
+                        .retriever
+                        .repository(&name)
+                        .await
+                        .unwrap_or(Repository::Unknown),
+                };
+                Some((dependency, status))
+            } else {
+                None
             }
         });
-        Ok(Box::new(dependencies))
+        Ok(Box::new(Box::pin(unfold)))
     }
 }
 
 impl<T> DependencyReader<T>
 where
-    T: std::io::Read + Send,
+    T: Unpin + tokio::io::AsyncRead + Send,
+{
+    async fn contents_from_reader(&self) -> Result<Vec<u8>, String> {
+        let mut contents = Vec::new();
+        self.reader
+            .lock()
+            .await
+            .read_to_end(&mut contents)
+            .await
+            .map_err(|e| e.to_string())?;
+        Ok(contents)
+    }
+}
+
+impl<T> DependencyReader<T>
+where
+    T: tokio::io::AsyncRead + Unpin + Send,
 {
     pub fn new<R>(reader: T, retriever: R) -> Self
     where
@@ -100,13 +126,14 @@ where
 #[cfg(test)]
 mod tests {
     use mockall::predicate::eq;
+    use tokio_stream::StreamExt;
 
     use super::*;
     use crate::pkg::{MockInfoRetriever, Repository};
     use crate::Dependency;
 
-    #[test]
-    fn retrieves_all_dependencies_from_cargo() {
+    #[tokio::test]
+    async fn retrieves_all_dependencies_from_cargo() {
         let retriever = {
             let mut retriever = Box::new(MockInfoRetriever::new());
             retriever
@@ -128,10 +155,10 @@ mod tests {
         };
 
         let dependency_reader = DependencyReader::new(cargo_lock_file_contents(), retriever);
-        let mut dependencies = dependency_reader.dependencies().unwrap();
+        let mut dependencies = dependency_reader.dependencies().await.unwrap();
 
         assert_eq!(
-            dependencies.next().unwrap(),
+            dependencies.next().await.unwrap(),
             Dependency {
                 name: "serde".into(),
                 version: "1.0.137".into(),

@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::error::Error;
 
+use async_trait::async_trait;
+
 use crate::pkg::Repository;
 
 mod contributors_ratio;
@@ -31,25 +33,27 @@ pub struct Tag {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait CommitRetriever: Sync + Send {
     /// Retrieves the commits for each tag.
-    fn commits_for_each_tag(
+    async fn commits_for_each_tag(
         &self,
         repository_url: &str,
     ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>>;
 
     /// Retrieves all the tags from a repository ordered by time, where the latest one is the most recent.
-    fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>>;
+    async fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>>;
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait ContributionDataRetriever: Send + Sync {
-    fn get_issue_lifespan(
+    async fn get_issue_lifespan(
         &self,
         repository: &Repository,
         last_issues: usize,
     ) -> Result<f64, Box<dyn Error>>;
-    fn get_pull_request_lifespan(
+    async fn get_pull_request_lifespan(
         &self,
         repository: &Repository,
         last_pull_requests: usize,
@@ -102,7 +106,8 @@ impl PartialEq for Evaluation {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait Policy: Send + Sync {
     /// Evaluates the policy.
-    fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, Box<dyn Error>>;
+    async fn evaluate(&self, dependency: &Dependency) -> Result<Evaluation, anyhow::Error>;
 }
