@@ -86,20 +86,15 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
     }
 
     let async_results = join_all(async_results).await;
-    let mut results = Vec::new();
-    for async_result in async_results {
-        results.push(async_result);
-    }
-
-    let sequential_results = results.into_iter().flatten().flatten().flatten();
+    let sequential_results = async_results.into_iter().flatten().flatten().flatten();
     reporter.report_results(sequential_results).await?;
 
     Ok(())
 }
 
-fn load_logger() -> Result<(), Box<dyn std::error::Error>> {
+fn load_logger() -> Result<(), Box<dyn Error>> {
     simple_logger::SimpleLogger::new()
-        .with_level(LevelFilter::Off)
+        .with_level(LevelFilter::Error)
         .with_module_level("dean", LevelFilter::Debug)
         .with_colors(true)
         .env()

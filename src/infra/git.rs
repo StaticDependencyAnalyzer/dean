@@ -6,8 +6,8 @@ use std::sync::Arc;
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use git2::Oid;
+use moka::future::{Cache, CacheBuilder};
 
-use crate::infra::cache::Cache;
 use crate::pkg::policy::{Commit, CommitRetriever, Tag};
 
 #[derive(Clone)]
@@ -49,28 +49,30 @@ impl CommitRetriever for RepositoryRetriever {
         repository_url: &str,
     ) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
         self.cache
-            .get_or_try_init(repository_url.to_string(), || async move {
-                self.repository_result_from_url(repository_url).await
-            })
+            .try_get_with(
+                repository_url.to_string(),
+                self.repository_result_from_url(repository_url),
+            )
             .await
             .map(|handle| handle.commits_for_each_tag)
-            .map_err(std::convert::Into::into)
+            .map_err(|e| anyhow!(e).into())
     }
 
     async fn all_tags(&self, repository_url: &str) -> Result<Vec<Tag>, Box<dyn Error>> {
         self.cache
-            .get_or_try_init(repository_url.to_string(), || async move {
-                self.repository_result_from_url(repository_url).await
-            })
+            .try_get_with(
+                repository_url.to_string(),
+                self.repository_result_from_url(repository_url),
+            )
             .await
             .map(|handle| handle.all_tags)
-            .map_err(std::convert::Into::into)
+            .map_err(|e| anyhow!(e).into())
     }
 }
 
 impl RepositoryRetriever {
     pub fn new<T: Into<Arc<dyn CommitStore>>>(commit_store: T) -> Self {
-        let cache = Cache::new();
+        let cache = CacheBuilder::default().build();
         Self {
             cache,
             commit_store: commit_store.into(),
