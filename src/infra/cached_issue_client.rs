@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use log::error;
-use moka::future::Cache;
+use moka::future::{Cache, CacheBuilder};
 use serde_json::Value;
 use tokio::pin;
 use tokio_stream::{Stream, StreamExt};
@@ -74,8 +74,8 @@ impl CachedClient {
             provider: provider.to_string(),
             inner: inner.into(),
             store: store.into(),
-            issue_cache: Cache::new(1024),
-            pull_request_cache: Cache::new(1024),
+            issue_cache: CacheBuilder::default().build(),
+            pull_request_cache: CacheBuilder::default().build(),
         }
     }
 
