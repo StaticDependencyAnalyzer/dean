@@ -15,13 +15,11 @@ pub trait IssueClient: Send + Sync {
         &self,
         organization: &str,
         repo: &str,
-        last_issues: usize,
     ) -> Box<dyn Stream<Item = Value> + Unpin + Send>;
     async fn get_last_pull_requests(
         &self,
         organization: &str,
         repo: &str,
-        last_pull_requests: usize,
     ) -> Box<dyn Stream<Item = Value> + Unpin + Send>;
 }
 
@@ -97,8 +95,9 @@ impl CachedClient {
 
             let issues = self
                 .inner
-                .get_last_issues(organization, repo, last_issues)
-                .await;
+                .get_last_issues(organization, repo)
+                .await
+                .take(last_issues);
             pin!(issues);
             let mut issue_vec: Vec<_> = Vec::new();
             while let Some(issue) = issues.next().await {
@@ -147,8 +146,9 @@ impl CachedClient {
 
             let mut pull_requests = self
                 .inner
-                .get_last_pull_requests(organization, repo, last_pull_requests)
-                .await;
+                .get_last_pull_requests(organization, repo)
+                .await
+                .take(last_pull_requests);
             let mut pull_request_vec = Vec::new();
             while let Some(pull_request) = pull_requests.next().await {
                 pull_request_vec.push(pull_request);
@@ -199,7 +199,7 @@ mod tests {
             let mut issue_client = Box::new(MockIssueClient::new());
             issue_client
                 .expect_get_last_issues()
-                .return_once(|_, _, _| Box::new(tokio_stream::iter(issues_in_repo())))
+                .return_once(|_, _| Box::new(tokio_stream::iter(issues_in_repo())))
                 .once();
             issue_client
         };
@@ -268,7 +268,7 @@ mod tests {
             let mut issue_client = Box::new(MockIssueClient::new());
             issue_client
                 .expect_get_last_pull_requests()
-                .return_once(|_, _, _| Box::new(tokio_stream::iter(pull_requests_in_repo())))
+                .return_once(|_, _| Box::new(tokio_stream::iter(pull_requests_in_repo())))
                 .once();
             issue_client
         };

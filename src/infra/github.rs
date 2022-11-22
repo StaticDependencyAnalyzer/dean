@@ -179,7 +179,6 @@ impl IssueClient for Client {
         &self,
         organization: &str,
         repo: &str,
-        _last_issues: usize,
     ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
         let stream = self.all_issues_iterator(organization, repo);
 
@@ -193,7 +192,6 @@ impl IssueClient for Client {
         &self,
         organization: &str,
         repo: &str,
-        _last_pull_requests: usize,
     ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
         let stream = self.all_issues_iterator(organization, repo);
 
@@ -240,8 +238,9 @@ mod tests {
         let client = Client::new(reqwest::Client::new(), authentication());
 
         let issues = client
-            .get_last_issues("StaticDependencyAnalyzer", "dean", 100)
+            .get_last_issues("StaticDependencyAnalyzer", "dean")
             .await
+            .take(100)
             .collect::<Vec<_>>()
             .await;
 
@@ -254,8 +253,9 @@ mod tests {
         let client = Client::new(reqwest::Client::new(), authentication());
 
         let prs = client
-            .get_last_pull_requests("StaticDependencyAnalyzer", "dean", 100)
+            .get_last_pull_requests("StaticDependencyAnalyzer", "dean")
             .await
+            .take(100)
             .collect::<Vec<_>>()
             .await;
 
@@ -267,13 +267,13 @@ mod tests {
     async fn it_retrieves_150_issues_from_rust_lang() {
         let client = Client::new(reqwest::Client::new(), authentication());
 
-        let issues = client.get_last_issues("rust-lang", "rust", 150).await;
+        let issues = client.get_last_issues("rust-lang", "rust").await.take(150);
         let issue_count = issues.take(150).count().await;
         assert!(issue_count > 0);
         assert!(issue_count <= 150);
 
         info!("New issues!");
-        let mut issues = client.get_last_issues("rust-lang", "rust", 150).await;
+        let mut issues = client.get_last_issues("rust-lang", "rust").await.take(150);
         assert_eq!(
             issues
                 .next()
