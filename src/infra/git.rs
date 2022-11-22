@@ -5,8 +5,11 @@ use std::sync::Arc;
 
 use anyhow::{anyhow, Context};
 use async_trait::async_trait;
+use futures::stream::FuturesOrdered;
+use futures::StreamExt;
 use git2::Oid;
 use moka::future::{Cache, CacheBuilder};
+use tokio::sync::Mutex;
 
 use crate::pkg::policy::{Commit, CommitRetriever, Tag};
 
@@ -101,12 +104,14 @@ impl RepositoryRetriever {
         let repository = Repository::new(repository_url)
             .await
             .map_err(|e| anyhow!("unable to create repository: {}", e))?;
-        let commits_for_each_tag_in_repository = repository
-            .commits_for_each_tag()
+
+        let (commits_for_each_tag_future, all_tags_future) =
+            futures::join!(repository.commits_for_each_tag(), repository.all_tags());
+
+        let commits_for_each_tag_in_repository = commits_for_each_tag_future
             .map_err(|e| anyhow!("error retrieving commits for each tag: {}", e))?;
-        let all_tags_in_repository = repository
-            .all_tags()
-            .map_err(|e| anyhow!("error retrieving tags: {}", e))?;
+        let all_tags_in_repository =
+            all_tags_future.map_err(|e| anyhow!("error retrieving tags: {}", e))?;
 
         if commits_for_each_tag.is_none() {
             let commits_for_each_tag = commits_for_each_tag_in_repository.clone();
@@ -132,7 +137,7 @@ impl RepositoryRetriever {
 }
 
 pub struct Repository {
-    repository: git2::Repository,
+    repository: Arc<Mutex<git2::Repository>>,
     #[allow(unused)]
     temp_dir: tempfile::TempDir,
 }
@@ -148,7 +153,7 @@ impl Repository {
                 .context("unable to clone repository")?;
 
             Ok(Repository {
-                repository,
+                repository: Arc::new(Mutex::new(repository)),
                 temp_dir,
             })
         })
@@ -157,8 +162,8 @@ impl Repository {
         result.map_err(std::convert::Into::into)
     }
 
-    fn commits_for_each_tag(&self) -> Result<HashMap<String, Vec<Commit>>, Box<dyn Error>> {
-        let commits_ids = self.commit_ids_for_each_tag()?;
+    async fn commits_for_each_tag(&self) -> Result<HashMap<String, Vec<Commit>>, anyhow::Error> {
+        let commits_ids = self.commit_ids_for_each_tag().await?;
         let map = commits_ids
             .into_iter()
             .map(|(key, value)| {
@@ -166,37 +171,51 @@ impl Repository {
                     key,
                     value
                         .into_iter()
-                        .flat_map(|commit_id| self.commit_from_id(Cow::from(commit_id)))
-                        .collect(),
+                        .map(|commit_id| self.commit_from_id(Cow::from(commit_id)))
+                        .collect::<FuturesOrdered<_>>()
+                        .filter_map(|elem| async { elem.ok() })
+                        .collect::<Vec<_>>(),
                 )
             })
             .collect::<HashMap<_, _>>();
-        Ok(map)
+
+        let mut result = HashMap::new();
+        for (key, value) in map {
+            result.insert(key, value.await);
+        }
+
+        Ok(result)
     }
 
     #[allow(clippy::cast_sign_loss)]
-    fn all_tags(&self) -> Result<Vec<Tag>, Box<dyn Error>> {
-        let mut tags = vec![];
-        self.repository.tag_foreach(|oid, name| {
-            if let Ok(obj) = self.repository.find_object(oid, None) {
-                if let Ok(commit) = obj.peel_to_commit() {
-                    tags.push(Tag {
-                        name: String::from_utf8_lossy(name).replace("refs/tags/", ""),
-                        commit_id: commit.id().to_string(),
-                        commit_timestamp: commit.time().seconds() as u64,
-                    });
+    async fn all_tags(&self) -> Result<Vec<Tag>, anyhow::Error> {
+        let repository = self.repository.clone();
+        tokio::task::spawn_blocking(move || {
+            let mut tags = vec![];
+            let guard = repository.blocking_lock();
+            guard.tag_foreach(|oid, name| {
+                if let Ok(obj) = guard.find_object(oid, None) {
+                    if let Ok(commit) = obj.peel_to_commit() {
+                        tags.push(Tag {
+                            name: String::from_utf8_lossy(name).replace("refs/tags/", ""),
+                            commit_id: commit.id().to_string(),
+                            commit_timestamp: commit.time().seconds() as u64,
+                        });
+                    }
                 }
-            }
-            true
-        })?;
-        tags.sort_by(|a, b| a.commit_timestamp.cmp(&b.commit_timestamp));
-        Ok(tags)
+                true
+            })?;
+            tags.sort_by(|a, b| a.commit_timestamp.cmp(&b.commit_timestamp));
+            Ok(tags)
+        })
+        .await
+        .expect("unable to get all tags")
     }
 
-    fn commit_ids_for_each_tag(&self) -> Result<HashMap<String, Vec<String>>, Box<dyn Error>> {
+    async fn commit_ids_for_each_tag(&self) -> Result<HashMap<String, Vec<String>>, anyhow::Error> {
         let mut result = HashMap::new();
 
-        let tags: Vec<_> = self.all_tags()?.into_iter().rev().collect();
+        let tags: Vec<_> = self.all_tags().await?.into_iter().rev().collect();
         if tags.is_empty() {
             return Ok(result);
         }
@@ -208,7 +227,8 @@ impl Repository {
             let first_oid = Oid::from_str(&first_tag.commit_id)?;
             let second_oid = Oid::from_str(&second_tag.commit_id)?;
 
-            let mut revwalk = self.repository.revwalk()?;
+            let guard = self.repository.lock().await;
+            let mut revwalk = guard.revwalk()?;
             revwalk.push(first_oid)?;
             for oid in revwalk.flatten() {
                 if oid == second_oid {
@@ -223,13 +243,15 @@ impl Repository {
         Ok(result)
     }
 
-    fn commit_from_id(&self, commit_id: Cow<str>) -> Result<Commit, Box<dyn Error>> {
+    async fn commit_from_id(&self, commit_id: Cow<'_, str>) -> Result<Commit, anyhow::Error> {
         let oid = Oid::from_str(commit_id.as_ref())?;
-        let commit = self
-            .repository
+
+        let guard = self.repository.lock().await;
+        let commit = guard
             .find_object(oid, None)?
             .into_commit()
-            .map_err(|_| "unable to convert into commit".to_string())?;
+            .map_err(|_| anyhow!("unable to find commit"))?;
+
         let author_email = commit
             .author()
             .email()
@@ -260,7 +282,10 @@ mod tests {
             .await
             .expect("unable to create repository");
 
-        let tags = repository.all_tags().expect("unable to retrieve all tags");
+        let tags = repository
+            .all_tags()
+            .await
+            .expect("unable to retrieve all tags");
 
         assert!(tags.len() >= 76);
         assert!(tags.contains(&Tag {
@@ -276,7 +301,7 @@ mod tests {
             .await
             .unwrap();
 
-        let commit_ids_for_each_tag = repository.commit_ids_for_each_tag().unwrap();
+        let commit_ids_for_each_tag = repository.commit_ids_for_each_tag().await.unwrap();
 
         assert_eq!(
             commit_ids_for_each_tag.get("v1.4.2").unwrap(),
@@ -301,7 +326,7 @@ mod tests {
             .await
             .unwrap();
 
-        let commits_for_each_tag = repository.commits_for_each_tag().unwrap();
+        let commits_for_each_tag = repository.commits_for_each_tag().await.unwrap();
 
         assert!(commits_for_each_tag
             .get("v1.4.2")
