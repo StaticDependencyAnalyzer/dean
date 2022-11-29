@@ -84,33 +84,28 @@ where
             })
             .collect_vec();
 
-        struct StreamStatus {
-            name_and_versions_to_retrieve: Vec<(String, String)>,
-            retriever: Arc<dyn InfoRetriever>,
-        }
+        let unfold = futures::stream::unfold(
+            (dependency_info_tuples, self.npm_info_retriever.clone()),
+            |(mut name_and_versions_to_retrieve, retriever)| async move {
+                if let Some((name, version)) = name_and_versions_to_retrieve.pop() {
+                    let (latest_version, repository) = futures::future::join(
+                        retriever.latest_version(&name),
+                        retriever.repository(&name),
+                    )
+                    .await;
 
-        let status = StreamStatus {
-            name_and_versions_to_retrieve: dependency_info_tuples,
-            retriever: self.npm_info_retriever.clone(),
-        };
-
-        let unfold = futures::stream::unfold(status, |mut status| async move {
-            if let Some((name, version)) = status.name_and_versions_to_retrieve.pop() {
-                let dependency = Dependency {
-                    name: name.clone(),
-                    version: version.clone(),
-                    latest_version: status.retriever.latest_version(&name).await.ok(),
-                    repository: status
-                        .retriever
-                        .repository(&name)
-                        .await
-                        .unwrap_or(Repository::Unknown),
-                };
-                Some((dependency, status))
-            } else {
-                None
-            }
-        });
+                    let dependency = Dependency {
+                        name: name.clone(),
+                        version: version.clone(),
+                        latest_version: latest_version.ok(),
+                        repository: repository.unwrap_or(Repository::Unknown),
+                    };
+                    Some((dependency, (name_and_versions_to_retrieve, retriever)))
+                } else {
+                    None
+                }
+            },
+        );
         Ok(Box::new(Box::pin(unfold)))
     }
 }
