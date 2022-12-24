@@ -47,7 +47,7 @@ impl Factory {
         &self,
         reader: T,
         lock_file: &str,
-    ) -> Box<dyn Stream<Item = Dependency> + Unpin + Send + 'a> {
+    ) -> impl Stream<Item = Dependency> + Unpin + Send {
         let retriever = self.info_retriever(lock_file);
 
         match Self::package_manager(lock_file) {
@@ -72,6 +72,7 @@ impl Factory {
         }
     }
 
+    #[allow(clippy::cast_precision_loss)]
     fn config_policies_to_vector(&self, config_policies: &Policies) -> Vec<Box<dyn Policy>> {
         let repository_retriever = self.repository_retriever();
         let mut policies: Vec<Box<dyn Policy>> = Vec::new();
@@ -92,24 +93,18 @@ impl Factory {
             )));
         }
         if let Some(policy) = &config_policies.max_issue_lifespan {
-            policies.push(Box::new(
-                #[allow(clippy::cast_precision_loss)]
-                MaxIssueLifespan::new(
-                    self.contribution_retriever(),
-                    policy.max_lifespan_in_seconds as f64,
-                    policy.last_issues,
-                ),
-            ));
+            policies.push(Box::new(MaxIssueLifespan::new(
+                self.contribution_retriever(),
+                policy.max_lifespan_in_seconds as f64,
+                policy.last_issues,
+            )));
         }
         if let Some(policy) = &config_policies.max_pull_request_lifespan {
-            policies.push(Box::new(
-                #[allow(clippy::cast_precision_loss)]
-                MaxPullRequestLifespan::new(
-                    self.contribution_retriever(),
-                    policy.max_lifespan_in_seconds as f64,
-                    policy.last_pull_requests,
-                ),
-            ));
+            policies.push(Box::new(MaxPullRequestLifespan::new(
+                self.contribution_retriever(),
+                policy.max_lifespan_in_seconds as f64,
+                policy.last_pull_requests,
+            )));
         }
 
         policies
@@ -134,8 +129,7 @@ impl Factory {
     }
 
     fn info_retriever(&self, lock_file: &str) -> Arc<dyn InfoRetriever> {
-        let info_retriever = &self.info_retriever;
-        info_retriever
+        self.info_retriever
             .get(|| {
                 let http_client = self.http_client();
 

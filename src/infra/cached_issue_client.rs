@@ -24,22 +24,28 @@ pub trait IssueClient: Send + Sync {
 }
 
 #[cfg_attr(test, mockall::automock)]
+#[async_trait]
 pub trait IssueStore: Send + Sync {
-    fn get_issues(&self, provider: &str, organization: &str, repo: &str) -> Option<Vec<Value>>;
-    fn save_issues(
+    async fn get_issues(
+        &self,
+        provider: &str,
+        organization: &str,
+        repo: &str,
+    ) -> Option<Vec<Value>>;
+    async fn save_issues(
         &self,
         provider: &str,
         organization: &str,
         repo: &str,
         issues: &[Value],
     ) -> Result<(), Box<dyn Error>>;
-    fn get_pull_requests(
+    async fn get_pull_requests(
         &self,
         provider: &str,
         organization: &str,
         repo: &str,
     ) -> Option<Vec<Value>>;
-    fn save_pull_requests(
+    async fn save_pull_requests(
         &self,
         provider: &str,
         organization: &str,
@@ -89,7 +95,11 @@ impl CachedClient {
         };
 
         let issues = self.issue_cache.try_get_with(key, async {
-            if let Some(issues) = self.store.get_issues(&self.provider, organization, repo) {
+            if let Some(issues) = self
+                .store
+                .get_issues(&self.provider, organization, repo)
+                .await
+            {
                 return Ok(issues);
             }
 
@@ -107,6 +117,7 @@ impl CachedClient {
             match self
                 .store
                 .save_issues(&self.provider, organization, repo, &issue_vec)
+                .await
             {
                 Ok(_) => Ok(issue_vec),
                 Err(inner) => Err(inner.to_string()),
@@ -137,9 +148,10 @@ impl CachedClient {
         };
 
         let pull_requests = self.pull_request_cache.try_get_with(key, async {
-            if let Some(pull_requests) =
-                self.store
-                    .get_pull_requests(&self.provider, organization, repo)
+            if let Some(pull_requests) = self
+                .store
+                .get_pull_requests(&self.provider, organization, repo)
+                .await
             {
                 return Ok(pull_requests);
             }
@@ -154,12 +166,11 @@ impl CachedClient {
                 pull_request_vec.push(pull_request);
             }
 
-            match self.store.save_pull_requests(
-                &self.provider,
-                organization,
-                repo,
-                &pull_request_vec,
-            ) {
+            match self
+                .store
+                .save_pull_requests(&self.provider, organization, repo, &pull_request_vec)
+                .await
+            {
                 Ok(_) => Ok(pull_request_vec),
                 Err(inner) => Err(inner.to_string()),
             }
