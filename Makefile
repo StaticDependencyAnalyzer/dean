@@ -1,5 +1,5 @@
 test:
-	cargo test
+	cargo test --all-features
 
 test-entr:
 	find . -name '*.rs' | entr -c $(MAKE) test

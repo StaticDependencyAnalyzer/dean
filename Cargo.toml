@@ -16,6 +16,11 @@ categories = [
 ]
 license = "custom"
 
+[features]
+default = []
+experimental = ["experimental-surrealdb"]
+experimental-surrealdb = ["dep:surrealdb"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -43,6 +48,7 @@ tokio-stream = "0.1.11"
 moka = { version = "0.9.4", features = ["future"] }
 async-recursion = "1.0.0"
 futures = "0.3.25"
+surrealdb = { git = "https://github.com/surrealdb/surrealdb", branch = "main",features=["kv-mem"], optional = true }
 
 [dev-dependencies]
 mockall = "0.11.0"
