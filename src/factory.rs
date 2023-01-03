@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 use tokio_stream::Stream;
 
 use crate::infra::cached_issue_client::IssueStore;
-use crate::infra::clock::Clock;
+use crate::infra::clock;
 use crate::infra::git::{CommitStore, RepositoryRetriever};
 use crate::infra::github;
 use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
@@ -82,7 +82,7 @@ impl Factory {
                 repository_retriever.clone(),
                 policy.min_number_of_releases,
                 Duration::from_secs(policy.days * DAYS_TO_SECONDS),
-                Box::new(Clock {}),
+                Box::new(clock::System::new()),
             )));
         }
         if let Some(policy) = &config_policies.contributors_ratio {
