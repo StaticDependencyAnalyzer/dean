@@ -1,14 +1,12 @@
 use std::error::Error;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::task::Poll;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use futures::StreamExt;
-use log::{debug, error, trace};
+use log::{debug, trace};
 use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
 use tokio_stream::Stream;
@@ -118,44 +116,12 @@ impl IssuePullRequestStream {
     }
 }
 
-impl Stream for IssuePullRequestStream {
-    type Item = Value;
-
-    fn poll_next(
-        mut self: Pin<&mut Self>,
-        cx: &mut std::task::Context<'_>,
-    ) -> Poll<Option<Self::Item>> {
-        trace!(target: "dean::github_client", "Checking if there are issues in the buffer");
-        if self.buffer.is_empty() {
-            debug!(target: "dean::github_client", "Buffer is empty, updating it");
-
-            match self.as_mut().update_buffer().as_mut().poll(cx) {
-                Poll::Ready(Err(e)) => {
-                    error!(target: "dean::github_client", "Failed to update buffer: {}", e);
-                    return Poll::Ready(None);
-                }
-                Poll::Pending => {
-                    debug!(target: "dean::github_client", "Buffer update is pending");
-                    cx.waker().wake_by_ref();
-                    return Poll::Pending;
-                }
-                Poll::Ready(Ok(())) => {
-                    debug!(target: "dean::github_client", "Buffer update is ready");
-                }
-            };
-        }
-
-        debug!(target: "dean::github_client", "Returning issue from buffer");
-        Poll::Ready(self.buffer.pop())
-    }
-}
-
-async fn func(mut stream: IssuePullRequestStream) -> Option<(Value, IssuePullRequestStream)> {
+async fn fetch_value_from_stream(mut stream: IssuePullRequestStream) -> Option<(Value, IssuePullRequestStream)> {
     trace!(target: "dean::github_client::func", "Polling stream");
     if stream.buffer.is_empty() {
         trace!(target: "dean::github_client::func", "Buffer is empty, updating it");
         match stream.update_buffer().await {
-            Ok(()) => {
+            Ok(_) => {
                 trace!(target: "dean::github_client::func", "Buffer update is ready");
             }
             Err(e) => {
@@ -164,15 +130,12 @@ async fn func(mut stream: IssuePullRequestStream) -> Option<(Value, IssuePullReq
             }
         };
     };
-    match stream.buffer.pop() {
-        None => {
-            trace!(target: "dean::github_client::func", "Buffer is empty, stopping");
-            None
-        }
-        Some(value) => {
-            trace!(target: "dean::github_client::func", "Returning issue from buffer");
-            Some((value, stream))
-        }
+    if let Some(value_from_buffer) = stream.buffer.pop() {
+        trace!(target: "dean::github_client::func", "Returning issue from buffer");
+        Some((value_from_buffer, stream))
+    } else {
+        trace!(target: "dean::github_client::func", "Buffer is empty, stopping");
+        None
     }
 }
 
@@ -185,9 +148,9 @@ impl IssueClient for Client {
     ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
         let stream = self.all_issues_iterator(organization, repo);
 
-        let unfold = futures::stream::unfold(stream, func);
+        let values_from_the_stream = futures::stream::unfold(stream, fetch_value_from_stream);
         let issues =
-            unfold.filter(|value| futures::future::ready(value.get("pull_request").is_none()));
+            values_from_the_stream.filter(|value| futures::future::ready(value.get("pull_request").is_none()));
         Box::new(Box::pin(issues))
     }
 
@@ -198,9 +161,9 @@ impl IssueClient for Client {
     ) -> Box<dyn Stream<Item = Value> + Unpin + Send> {
         let stream = self.all_issues_iterator(organization, repo);
 
-        let unfold = futures::stream::unfold(stream, func);
+        let values_from_the_stream = futures::stream::unfold(stream, fetch_value_from_stream);
         let pull_requests =
-            unfold.filter(|value| futures::future::ready(value.get("pull_request").is_some()));
+            values_from_the_stream.filter(|value| futures::future::ready(value.get("pull_request").is_some()));
         Box::new(Box::pin(pull_requests))
     }
 }
