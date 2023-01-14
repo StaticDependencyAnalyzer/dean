@@ -2,13 +2,14 @@ use std::error::Error;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::Poll;
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use anyhow::Context;
 use async_recursion::async_recursion;
 use async_trait::async_trait;
 use futures::StreamExt;
-use log::{debug, error, trace, warn};
+use log::{debug, error, trace};
+use reqwest::header::{HeaderMap, HeaderValue};
 use serde_json::Value;
 use tokio_stream::Stream;
 
@@ -34,10 +35,7 @@ pub struct IssuePullRequestStream {
 
 impl IssuePullRequestStream {
     #[async_recursion]
-    async fn update_buffer(
-        &mut self,
-        backoff: Option<(usize, Duration)>,
-    ) -> Result<(), Box<dyn Error>> {
+    async fn update_buffer(&mut self) -> Result<(), Box<dyn Error>> {
         if self.next_page.is_none() {
             return Ok(());
         }
@@ -61,42 +59,29 @@ impl IssuePullRequestStream {
         trace!(target: "dean::github_client", "Response: {:?}", response);
 
         if response.status().as_u16() == 403 {
-            let total_allowed_attempts = 8;
             self.next_page = Some(url);
-            // FIXME: Naive implementation of a retry strategy, change this to use the x-ratelimit-reset header in the response.
-            return match backoff {
-                None => {
-                    let initial_duration = Duration::from_secs(15);
-                    warn!(target: "dean::github_client", "Github API rate limit exceeded, remaining attempts [{}/{}], retrying in {} seconds", total_allowed_attempts, total_allowed_attempts, initial_duration.as_secs());
-                    tokio::time::sleep(initial_duration).await;
-                    self.update_buffer(Some((total_allowed_attempts - 1, initial_duration * 2)))
-                        .await
-                }
-                Some((remaining_attempts, duration)) => {
-                    if remaining_attempts == 0 {
-                        return Err("Github API rate limit exceeded, stopping iteration".into());
-                    }
 
-                    warn!(target: "dean::github_client", "Github API rate limit exceeded, remaining attempts [{}/{}], retrying in {} seconds", remaining_attempts, total_allowed_attempts, duration.as_secs());
-                    tokio::time::sleep(duration).await;
-                    self.update_buffer(Some((remaining_attempts - 1, duration * 2)))
-                        .await
-                }
-            };
+            let rate_limit_timestamp_seconds = response
+                .headers()
+                .get("x-ratelimit-reset")
+                .unwrap_or(&HeaderValue::from(0))
+                .to_str()
+                .context("unable to convert rate limit reset header to str")?
+                .parse::<u64>()?;
+
+            let rate_limit_sleep_duration = Duration::from_secs(rate_limit_timestamp_seconds)
+                .checked_sub(SystemTime::now().duration_since(UNIX_EPOCH)?)
+                .context("unable to substract dates")?
+                .checked_add(Duration::from_secs(5))
+                .context("unable to add duration increment")?;
+
+            tokio::time::sleep(rate_limit_sleep_duration).await;
+            return self.update_buffer().await;
         }
 
-        if let Some(link) = response.headers().get("link") {
-            let link = link.to_str().unwrap_or("");
-            let link = link
-                .split(',')
-                .find(|link| link.contains("rel=\"next\""))
-                .unwrap_or("");
-            let link = link.split(';').next().unwrap_or("");
-            let link = link.trim().trim_start_matches('<').trim_end_matches('>');
-            if !link.is_empty() {
-                self.next_page = Some(link.to_string());
-            }
-        };
+        if let Some(next_page) = Self::extract_next_page_from_headers(response.headers()) {
+            self.next_page = Some(next_page.to_string());
+        }
 
         let response_json = response
             .json::<Value>()
@@ -112,6 +97,25 @@ impl IssuePullRequestStream {
 
         Ok(())
     }
+
+    fn extract_next_page_from_headers(headers: &HeaderMap) -> Option<&str> {
+        let link_header = headers.get("link")?;
+        let link_header_as_str = link_header.to_str().ok()?;
+        let next_rel_link = link_header_as_str
+            .split(',')
+            .find(|link| link.contains("rel=\"next\""))?;
+        let first_next_rel_link = next_rel_link.split(';').next()?;
+        let first_next_rel_link_without_weird_characters = first_next_rel_link
+            .trim()
+            .trim_start_matches('<')
+            .trim_end_matches('>');
+
+        if first_next_rel_link_without_weird_characters.is_empty() {
+            None
+        } else {
+            Some(first_next_rel_link_without_weird_characters)
+        }
+    }
 }
 
 impl Stream for IssuePullRequestStream {
@@ -125,7 +129,7 @@ impl Stream for IssuePullRequestStream {
         if self.buffer.is_empty() {
             debug!(target: "dean::github_client", "Buffer is empty, updating it");
 
-            match self.as_mut().update_buffer(None).as_mut().poll(cx) {
+            match self.as_mut().update_buffer().as_mut().poll(cx) {
                 Poll::Ready(Err(e)) => {
                     error!(target: "dean::github_client", "Failed to update buffer: {}", e);
                     return Poll::Ready(None);
@@ -146,12 +150,11 @@ impl Stream for IssuePullRequestStream {
     }
 }
 
-#[async_recursion]
 async fn func(mut stream: IssuePullRequestStream) -> Option<(Value, IssuePullRequestStream)> {
     trace!(target: "dean::github_client::func", "Polling stream");
     if stream.buffer.is_empty() {
         trace!(target: "dean::github_client::func", "Buffer is empty, updating it");
-        match stream.update_buffer(None).await {
+        match stream.update_buffer().await {
             Ok(()) => {
                 trace!(target: "dean::github_client::func", "Buffer update is ready");
             }
