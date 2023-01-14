@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use async_trait::async_trait;
 use log::error;
 use tokio::io::AsyncReadExt;
@@ -8,6 +9,7 @@ use tokio_stream::Stream;
 use toml::Value;
 
 use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
+use crate::Result;
 
 pub struct DependencyReader<T>
 where
@@ -23,18 +25,18 @@ where
     T: tokio::io::AsyncRead + Unpin + Send,
 {
     type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
-    async fn dependencies(&self) -> Result<Self::Itr, String> {
+    async fn dependencies(&self) -> Result<Self::Itr> {
         let contents = self.contents_from_reader().await?;
-        let result: Value = toml::from_slice(&contents).map_err(|e| e.to_string())?;
+        let result: Value = toml::from_slice(&contents)?;
 
         let packages = result
             .get("package")
-            .ok_or_else(|| "No package section found".to_string())?
+            .context("no package section found")?
             .clone();
 
         let package_list = packages
             .as_array()
-            .ok_or_else(|| "Packages section is not an array".to_string())?
+            .context("packages section is not an array")?
             .clone();
 
         let name_and_version_from_packages = package_list
@@ -42,22 +44,22 @@ where
             .map(|package| {
                 let name = package
                     .get("name")
-                    .ok_or_else(|| "no name found".to_string())?
+                    .context("no name found")?
                     .as_str()
-                    .ok_or_else(|| "name is not a string".to_string())?
+                    .context("name is not a string")?
                     .to_string();
 
                 let version = package
                     .get("version")
-                    .ok_or_else(|| "no version found".to_string())?
+                    .context("no version found")?
                     .as_str()
-                    .ok_or_else(|| "version is not a string".to_string())?
+                    .context("version is not a string")?
                     .to_string();
 
                 Ok((name, version))
             })
             .into_iter()
-            .filter_map(|result: Result<(String, String), String>| {
+            .filter_map(|result: Result<(String, String)>| {
                 result.map_err(|e| error!("{}", e)).ok()
             });
 
@@ -102,14 +104,14 @@ impl<T> DependencyReader<T>
 where
     T: Unpin + tokio::io::AsyncRead + Send,
 {
-    async fn contents_from_reader(&self) -> Result<Vec<u8>, String> {
+    async fn contents_from_reader(&self) -> Result<Vec<u8>> {
         let mut contents = Vec::new();
         self.reader
             .lock()
             .await
             .read_to_end(&mut contents)
             .await
-            .map_err(|e| e.to_string())?;
+            .context("error reading from reader")?;
         Ok(contents)
     }
 }

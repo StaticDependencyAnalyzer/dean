@@ -28,7 +28,7 @@ impl<T> Lazy<T> {
 
         // SAFETY: This is safe because the value has already been initialized in the `Once` block.
         let hold = unsafe { &*self.hold.get() };
-        hold.as_ref().unwrap()
+        hold.as_ref().expect("Lazy value was not initialized")
     }
 }
 

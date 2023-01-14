@@ -1,11 +1,10 @@
 use std::cmp::Ordering;
-use std::error::Error;
 use std::sync::Arc;
 
 use futures::future::join_all;
 use itertools::Itertools;
 
-use crate::{Dependency, Evaluation, Policy};
+use crate::{Dependency, Evaluation, Policy, Result};
 
 pub struct ExecutionConfig {
     regex: Option<regex::Regex>,
@@ -16,7 +15,7 @@ impl ExecutionConfig {
     pub fn new(
         policies: Vec<Box<dyn Policy>>,
         dependency_name_regex: Option<&str>,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<Self> {
         Ok(Self {
             regex: match dependency_name_regex {
                 Some(regex) => Some(regex::Regex::new(regex)?),
@@ -49,10 +48,7 @@ impl PolicyExecutor {
         }
     }
 
-    pub async fn evaluate(
-        &self,
-        dependency: &Dependency,
-    ) -> Result<Vec<Evaluation>, Box<dyn Error>> {
+    pub async fn evaluate(&self, dependency: &Dependency) -> Result<Vec<Evaluation>> {
         let mut has_matched_regex_previously = false;
         let mut evaluations = vec![];
 

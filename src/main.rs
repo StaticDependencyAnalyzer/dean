@@ -7,9 +7,11 @@ mod infra;
 mod lazy;
 mod pkg;
 
-use std::error::Error;
+pub type Result<T, E = anyhow::Error> = core::result::Result<T, E>;
+
 use std::rc::Rc;
 use std::sync::Arc;
+use anyhow::Context;
 
 use futures::future::join_all;
 use log::{error, info, warn, LevelFilter};
@@ -23,7 +25,7 @@ use crate::pkg::policy::{Evaluation, Policy};
 use crate::pkg::{Dependency, ResultReporter};
 
 #[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<()> {
     let args = parse_args();
     load_logger()?;
     let config = Rc::new(Config::load_from_default_file_path_or_default().await);
@@ -43,10 +45,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(), Box<dyn Error>> {
+async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<()> {
     let lock_file = File::open(lock_file_name)
         .await
-        .map_err(|err| format!("file {} could not be opened: {}", lock_file_name, err))?;
+        .with_context(|| format!("failed to open lock file: {}", lock_file_name))?;
     let mut reporter = Factory::result_reporter();
     let mut dependency_reader = factory.dependency_reader(lock_file, lock_file_name).await;
 
@@ -92,7 +94,7 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
     Ok(())
 }
 
-fn load_logger() -> Result<(), Box<dyn Error>> {
+fn load_logger() -> Result<()> {
     simple_logger::SimpleLogger::new()
         .with_level(LevelFilter::Error)
         .with_module_level("dean", LevelFilter::Debug)
