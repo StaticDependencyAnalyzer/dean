@@ -148,10 +148,10 @@ mod tests {
                 .return_once(|_| Ok("5.73.1".into()));
             retriever
                 .expect_repository()
-                .return_once(|_| Ok(Repository::Unknown));
+                .returning(|_| Ok(Repository::Unknown));
             retriever
                 .expect_latest_version()
-                .return_once(|_| Ok("1.0.0".into()));
+                .returning(|_| Ok("1.0.0".into()));
             retriever
         };
 
