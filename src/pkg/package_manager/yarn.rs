@@ -7,7 +7,7 @@ use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
 
 use crate::pkg::{DependencyRetriever, InfoRetriever, Repository};
-use crate::Dependency;
+use crate::{Dependency, Result};
 
 pub struct DependencyReader<T>
 where
@@ -39,7 +39,7 @@ where
 {
     type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
 
-    async fn dependencies(&self) -> Result<Self::Itr, String> {
+    async fn dependencies(&self) -> Result<Self::Itr> {
         let content = self.content_from_reader().await?;
 
         let not_comment_lines = content.lines().filter(|line| !line.trim().starts_with('#'));
@@ -114,14 +114,9 @@ impl<T> DependencyReader<T>
 where
     T: Unpin + tokio::io::AsyncRead + Send,
 {
-    async fn content_from_reader(&self) -> Result<String, String> {
+    async fn content_from_reader(&self) -> Result<String> {
         let mut bytes = Vec::new();
-        self.reader
-            .lock()
-            .await
-            .read_to_end(&mut bytes)
-            .await
-            .map_err(|e| e.to_string())?;
+        self.reader.lock().await.read_to_end(&mut bytes).await?;
         Ok(String::from_utf8_lossy(&bytes).into_owned())
     }
 }
@@ -153,10 +148,10 @@ mod tests {
                 .return_once(|_| Ok("5.73.1".into()));
             retriever
                 .expect_repository()
-                .return_const(Ok(Repository::Unknown));
+                .returning(|_| Ok(Repository::Unknown));
             retriever
                 .expect_latest_version()
-                .return_const(Ok("1.0.0".into()));
+                .returning(|_| Ok("1.0.0".into()));
             retriever
         };
 
