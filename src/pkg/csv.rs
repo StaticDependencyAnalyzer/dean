@@ -1,12 +1,13 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use async_trait::async_trait;
 use itertools::Itertools;
 use tokio::io::AsyncWrite;
 use tokio::sync::Mutex;
 
 use crate::pkg::ResultReporter;
-use crate::Evaluation;
+use crate::{Evaluation, Result};
 
 pub struct Reporter<T>
 where
@@ -35,7 +36,7 @@ impl<F> ResultReporter for Reporter<F>
 where
     F: AsyncWrite + Unpin + Send,
 {
-    async fn report_results<T>(&mut self, result: T) -> Result<(), String>
+    async fn report_results<T>(&mut self, result: T) -> Result<()>
     where
         T: IntoIterator<Item = Evaluation> + Send,
     {
@@ -60,7 +61,7 @@ where
         writer
             .write_record(Self::headers(&policy_names))
             .await
-            .map_err(|e| format!("unable to write record: {}", e))?;
+            .context("unable to write record")?;
 
         for dependency in dependencies {
             let evaluations = evaluations
@@ -106,7 +107,7 @@ where
             writer
                 .write_record(row)
                 .await
-                .map_err(|e| format!("unable to write record: {}", e))?;
+                .context("unable to write record")?;
         }
 
         Ok(())

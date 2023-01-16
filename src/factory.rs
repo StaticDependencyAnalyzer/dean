@@ -1,4 +1,3 @@
-use std::error::Error;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,7 +26,7 @@ use crate::pkg::policy::{
 };
 use crate::pkg::recognizer::PackageManager;
 use crate::pkg::{DependencyRetriever, InfoRetriever};
-use crate::Dependency;
+use crate::{Dependency, Result};
 
 pub struct Factory {
     config: Rc<Config>,
@@ -56,19 +55,19 @@ impl Factory {
                 npm::DependencyReader::new(reader, retriever)
                     .dependencies()
                     .await
-                    .unwrap(),
+                    .expect("failed to retrieve npm dependencies from reader"),
             ),
             PackageManager::Cargo => Box::new(
                 cargo::DependencyReader::new(reader, retriever)
                     .dependencies()
                     .await
-                    .unwrap(),
+                    .expect("failed to retrieve cargo dependencies from reader"),
             ),
             PackageManager::Yarn => Box::new(
                 yarn::DependencyReader::new(reader, retriever)
                     .dependencies()
                     .await
-                    .unwrap(),
+                    .expect("failed to retrieve yarn dependencies from reader"),
             ),
         }
     }
@@ -116,7 +115,7 @@ impl Factory {
         policies
     }
 
-    fn execution_configs(&self) -> Result<Vec<ExecutionConfig>, Box<dyn Error>> {
+    fn execution_configs(&self) -> Result<Vec<ExecutionConfig>> {
         let mut execution_configs = vec![];
 
         for dependency_config in &self.config.dependency_config {
@@ -239,7 +238,7 @@ impl Factory {
         Reporter::new(Arc::new(Mutex::new(reader)))
     }
 
-    pub fn engine(&mut self) -> Result<PolicyExecutor, Box<dyn Error>> {
+    pub fn engine(&mut self) -> Result<PolicyExecutor> {
         Ok(PolicyExecutor::new(self.execution_configs()?))
     }
 

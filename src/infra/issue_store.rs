@@ -20,7 +20,10 @@ impl Sqlite {
     }
 
     pub fn init(&self) -> Result<(), Box<dyn Error>> {
-        let conn = self.connection.lock().unwrap();
+        let conn = self
+            .connection
+            .lock()
+            .map_err(|e| e.to_string())?;
         conn.execute_batch(
             r#"
 CREATE TABLE IF NOT EXISTS issuestore_issue (

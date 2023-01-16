@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::{anyhow, Context};
 use async_trait::async_trait;
 use futures::Stream;
 use log::error;
@@ -8,6 +9,7 @@ use tokio::io::{AsyncRead, AsyncReadExt};
 use tokio::sync::Mutex;
 
 use crate::pkg::{Dependency, DependencyRetriever, InfoRetriever, Repository};
+use crate::Result;
 
 pub struct DependencyReader<T>
 where
@@ -23,7 +25,7 @@ where
     T: AsyncRead + Unpin + Send,
 {
     type Itr = Box<dyn Stream<Item = Dependency> + Unpin + Send>;
-    async fn dependencies(&self) -> Result<Self::Itr, String> {
+    async fn dependencies(&self) -> Result<Self::Itr> {
         let content = {
             let mut content = String::new();
             self.reader
@@ -31,17 +33,21 @@ where
                 .await
                 .read_to_string(&mut content)
                 .await
-                .map_err(|e| e.to_string())?;
+                .context("unable to read contents from reader")?;
             content
         };
-        let result: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
+        let result: Value =
+            serde_json::from_str(&content).context("unable to retrieve json from string")?;
 
         let value = result["dependencies"].clone();
         if !value.is_object() {
-            return Err("dependencies not found in lock file".into());
+            return Err(anyhow!("dependencies not found in lock file"));
         }
 
-        let dependencies = value.as_object().unwrap().clone();
+        let dependencies = value
+            .as_object()
+            .context("unable to extract dependency as object")?
+            .clone();
 
         let deps = dependencies
             .into_iter()

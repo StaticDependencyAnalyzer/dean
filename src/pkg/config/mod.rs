@@ -1,5 +1,8 @@
+use anyhow::{anyhow, Context};
 use serde::{Deserialize, Serialize};
 use tokio::io::AsyncReadExt;
+
+use crate::Result;
 
 pub mod contributors_ratio;
 pub mod max_issue_lifespan;
@@ -51,25 +54,23 @@ pub struct Policies {
 }
 
 impl Config {
-    pub async fn load_from_reader(
-        reader: &mut (dyn tokio::io::AsyncRead + std::marker::Unpin),
-    ) -> Result<Self, Box<dyn std::error::Error>> {
+    pub async fn load_from_reader(reader: &mut (dyn tokio::io::AsyncRead + Unpin)) -> Result<Self> {
         let mut contents = String::new();
         reader.read_to_string(&mut contents).await?;
         if contents.is_empty() {
-            return Err("the content of the config file is empty".into());
+            return Err(anyhow!("the content of the config file is empty"));
         }
         let result = serde_yaml::from_str(&contents)?;
         Ok(result)
     }
 
-    pub fn dump_to_string(&self) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn dump_to_string(&self) -> Result<String> {
         let result = serde_yaml::to_string(&self)?;
         Ok(result)
     }
 
-    fn default_config_file() -> Result<std::path::PathBuf, Box<dyn std::error::Error>> {
-        let home = dirs_next::home_dir().ok_or_else(|| { "Could not find home directory. Please set the environment variable HOME to your home directory.".to_string() })?;
+    fn default_config_file() -> Result<std::path::PathBuf> {
+        let home = dirs_next::home_dir().context("Could not find home directory. Please set the environment variable HOME to your home directory.")?;
         Ok(home.join(".config/dean.yaml"))
     }
 

@@ -5,7 +5,7 @@ use futures::Stream;
 use lazy_static::lazy_static;
 use regex::Regex;
 
-use crate::Evaluation;
+use crate::{Evaluation, Result};
 
 pub mod config;
 pub mod csv;
@@ -17,19 +17,19 @@ pub mod recognizer;
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
 pub trait InfoRetriever: Sync + Send {
-    async fn latest_version(&self, dependency: &str) -> Result<String, String>;
-    async fn repository(&self, dependency: &str) -> Result<Repository, String>;
+    async fn latest_version(&self, dependency: &str) -> Result<String>;
+    async fn repository(&self, dependency: &str) -> Result<Repository>;
 }
 
 #[async_trait]
 pub trait DependencyRetriever {
     type Itr: Stream<Item = Dependency> + Unpin + Send;
-    async fn dependencies(&self) -> Result<Self::Itr, String>;
+    async fn dependencies(&self) -> Result<Self::Itr>;
 }
 
 #[async_trait]
 pub trait ResultReporter {
-    async fn report_results<T>(&mut self, result: T) -> Result<(), String>
+    async fn report_results<T>(&mut self, result: T) -> Result<()>
     where
         T: IntoIterator<Item = Evaluation> + Send;
 }
