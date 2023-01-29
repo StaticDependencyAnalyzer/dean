@@ -6,15 +6,26 @@ use clap::{Parser, Subcommand};
 pub struct Args {
     #[clap(subcommand)]
     pub command: Commands,
+
+    #[clap(
+        global = true,
+        short = 'v',
+        default_value = "error",
+        help = "Valid values, from more verbose to less are: trace, debug, info, warn, error, off"
+    )]
+    pub log_level: String,
 }
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    #[clap(
-        about = "Scans the dependencies of a given lock file. Supported lock files are: `Cargo.lock`, `package-lock.json` and `yarn.lock`"
-    )]
+    #[clap(about = "Scans the dependencies of a given lock file.")]
     Scan {
-        #[clap(long, short, default_value = "Cargo.lock")]
+        #[clap(
+            long,
+            short,
+            default_value = "Cargo.lock",
+            help = "Lock file where the dependencies are defined. Supported locks are: Cargo.lock, package-lock.json and yarn.lock"
+        )]
         lock_file: String,
     },
 

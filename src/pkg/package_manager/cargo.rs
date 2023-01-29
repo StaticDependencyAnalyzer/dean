@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context;
 use async_trait::async_trait;
+use itertools::Itertools;
 use log::error;
 use tokio::io::AsyncReadExt;
 use tokio::sync::Mutex;
@@ -31,16 +32,14 @@ where
 
         let packages = result
             .get("package")
-            .context("no package section found")?
-            .clone();
+            .context("no package section found")?;
 
         let package_list = packages
             .as_array()
-            .context("packages section is not an array")?
-            .clone();
+            .context("packages section is not an array")?;
 
         let name_and_version_from_packages = package_list
-            .into_iter()
+            .iter()
             .map(|package| {
                 let name = package
                     .get("name")
@@ -63,39 +62,32 @@ where
                 result.map_err(|e| error!("{}", e)).ok()
             });
 
-        let unfold = futures::stream::unfold(
-            (
-                name_and_version_from_packages.collect::<Vec<_>>(),
-                self.cargo_info_retriever.clone(),
-            ),
-            |(mut name_and_versions_to_retrieve, cargo_info_retriever)| async move {
-                let next = name_and_versions_to_retrieve.pop();
-                if let Some((name, version)) = next {
-                    tokio::spawn(async move {
-                        let (latest_version, repository) = futures::future::join(
-                            cargo_info_retriever.latest_version(&name),
-                            cargo_info_retriever.repository(&name),
-                        )
-                        .await;
+        let futures = name_and_version_from_packages
+            .map(|(name, version)| {
+                let retriever = self.cargo_info_retriever.clone();
+                tokio::spawn(async move {
+                    let (latest_version, repository) = futures::future::join(
+                        retriever.latest_version(&name),
+                        retriever.repository(&name),
+                    )
+                    .await;
 
-                        let dependency = Dependency {
-                            name: name.clone(),
-                            version: version.clone(),
-                            latest_version: latest_version.ok(),
-                            repository: repository.unwrap_or(Repository::Unknown),
-                        };
-                        Some((
-                            dependency,
-                            (name_and_versions_to_retrieve, cargo_info_retriever),
-                        ))
-                    })
-                    .await
-                    .expect("error retrieving the cargo dependency")
-                } else {
-                    None
-                }
-            },
-        );
+                    Dependency {
+                        name: name.clone(),
+                        version: version.clone(),
+                        latest_version: latest_version.ok(),
+                        repository: repository.unwrap_or(Repository::Unknown),
+                    }
+                })
+            })
+            .collect_vec();
+
+        let unfold =
+            futures::stream::unfold(futures, |mut name_and_versions_to_retrieve| async move {
+                let next = name_and_versions_to_retrieve.pop();
+                let dependency = next?.await.ok()?;
+                Some((dependency, name_and_versions_to_retrieve))
+            });
         Ok(Box::new(Box::pin(unfold)))
     }
 }
