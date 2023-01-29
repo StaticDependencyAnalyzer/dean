@@ -17,7 +17,7 @@ use crate::infra::repo_contribution;
 use crate::infra::{commit_store, issue_store};
 use crate::lazy::Lazy;
 use crate::pkg::config::{Config, Policies};
-use crate::pkg::csv::Reporter;
+use crate::pkg::format::csv::Reporter;
 use crate::pkg::engine::{ExecutionConfig, PolicyExecutor};
 use crate::pkg::package_manager::{cargo, npm, yarn};
 use crate::pkg::policy::{

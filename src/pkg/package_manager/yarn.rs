@@ -56,56 +56,58 @@ where
                     }
                 });
 
-        let dependency_info_tuples = dependency_lines_grouped
-            .into_iter()
-            .map(|lines| {
-                let dependency_line: String = lines.first().unwrap().replace('\"', "");
-                let mut dependency_name = dependency_line.split_once('@').unwrap().0.to_owned();
-                if dependency_name.is_empty() {
-                    dependency_name = format!(
-                        "@{}",
-                        dependency_line
-                            .replacen('@', "", 1)
-                            .split_once('@')
-                            .unwrap()
-                            .0
-                    );
-                }
+        let dependency_info_tuples = dependency_lines_grouped.into_iter().map(|lines| {
+            let dependency_line: String = lines.first().unwrap().replace('\"', "");
+            let mut dependency_name = dependency_line.split_once('@').unwrap().0.to_owned();
+            if dependency_name.is_empty() {
+                dependency_name = format!(
+                    "@{}",
+                    dependency_line
+                        .replacen('@', "", 1)
+                        .split_once('@')
+                        .unwrap()
+                        .0
+                );
+            }
 
-                let dependency_version = lines.get(1).unwrap();
-                let dependency_version: String = dependency_version
-                    .trim()
-                    .split_once(' ')
-                    .unwrap()
-                    .1
-                    .replace('\"', "");
+            let dependency_version = lines.get(1).unwrap();
+            let dependency_version: String = dependency_version
+                .trim()
+                .split_once(' ')
+                .unwrap()
+                .1
+                .replace('\"', "");
 
-                (dependency_name, dependency_version)
-            })
-            .collect_vec();
+            (dependency_name, dependency_version)
+        });
 
-        let unfold = futures::stream::unfold(
-            (dependency_info_tuples, self.npm_info_retriever.clone()),
-            |(mut name_and_versions_to_retrieve, retriever)| async move {
-                if let Some((name, version)) = name_and_versions_to_retrieve.pop() {
+        let futures = dependency_info_tuples
+            .map(|(name, version)| {
+                let retriever = self.npm_info_retriever.clone();
+
+                tokio::spawn(async move {
                     let (latest_version, repository) = futures::future::join(
                         retriever.latest_version(&name),
                         retriever.repository(&name),
                     )
                     .await;
 
-                    let dependency = Dependency {
+                    Dependency {
                         name: name.clone(),
                         version: version.clone(),
                         latest_version: latest_version.ok(),
                         repository: repository.unwrap_or(Repository::Unknown),
-                    };
-                    Some((dependency, (name_and_versions_to_retrieve, retriever)))
-                } else {
-                    None
-                }
-            },
-        );
+                    }
+                })
+            })
+            .collect_vec();
+
+        let unfold =
+            futures::stream::unfold(futures, |mut name_and_versions_to_retrieve| async move {
+                let next = name_and_versions_to_retrieve.pop();
+                let dependency = next?.await.ok()?;
+                Some((dependency, name_and_versions_to_retrieve))
+            });
         Ok(Box::new(Box::pin(unfold)))
     }
 }
