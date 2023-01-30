@@ -141,7 +141,7 @@ mod tests {
                     Ok(Evaluation::Fail {
                         policy_name: "some_policy_name".to_string(),
                         dependency: dep.clone(),
-                        message: "some_reason".into(),
+                        reason: "some_reason".into(),
                         fail_score: 1.0,
                     })
                 });
@@ -169,12 +169,12 @@ mod tests {
             Evaluation::Fail {
                 policy_name,
                 dependency: dep,
-                message,
+                reason,
                 fail_score,
             } => {
                 assert_eq!(policy_name, "some_policy_name");
                 assert_eq!(dep, &dependency());
-                assert_eq!(message, "some_reason");
+                assert_eq!(reason, "some_reason");
                 assert!((fail_score - 1.0).abs() < f64::EPSILON);
             }
             Evaluation::Pass { .. } => {
@@ -234,7 +234,7 @@ mod tests {
                 Ok(Evaluation::Fail {
                     policy_name: "some_policy_name".to_string(),
                     dependency: dep.clone(),
-                    message: "some_reason".into(),
+                    reason: "some_reason".into(),
                     fail_score: 1.0,
                 })
             });
@@ -258,12 +258,12 @@ mod tests {
             Evaluation::Fail {
                 policy_name,
                 dependency: dep,
-                message,
+                reason,
                 fail_score,
             } => {
                 assert_eq!(policy_name, "some_policy_name");
                 assert_eq!(dep, &dependency());
-                assert_eq!(message, "some_reason");
+                assert_eq!(reason, "some_reason");
                 assert!((fail_score - 1.0) < f64::EPSILON);
             }
             Evaluation::Pass { .. } => {

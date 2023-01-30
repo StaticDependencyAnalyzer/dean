@@ -48,7 +48,7 @@ impl Policy for MinNumberOfReleasesRequired {
             Ok(Evaluation::Fail {
                 policy_name: "min_number_of_releases_required".to_string(),
                 dependency: dependency.clone(),
-                message: format!(
+                reason: format!(
                     "expected {} releases in the last {} days, but found {}",
                     self.number_of_releases,
                     self.duration.as_secs() / (24 * 60 * 60),
@@ -192,7 +192,7 @@ mod tests {
             Evaluation::Fail {
                 policy_name: "min_number_of_releases_required".to_string(),
                 dependency,
-                message: "expected 2 releases in the last 1260 days, but found 1".to_string(),
+                reason: "expected 2 releases in the last 1260 days, but found 1".to_string(),
                 fail_score: 0.5,
             }
         );
@@ -252,7 +252,7 @@ mod tests {
             Evaluation::Fail {
                 policy_name: "min_number_of_releases_required".to_string(),
                 dependency,
-                message: "expected 2 releases in the last 1260 days, but found 0".to_string(),
+                reason: "expected 2 releases in the last 1260 days, but found 0".to_string(),
                 fail_score: 1.0,
             }
         );

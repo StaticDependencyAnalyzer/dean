@@ -71,7 +71,7 @@ impl Policy for ContributorsRatio {
                 return Ok(Evaluation::Fail {
                     policy_name: "contributors_ratio".to_string(),
                     dependency: dependency.clone(),
-                    message: format!(
+                    reason: format!(
                         "the rate of contribution is too high ({} > {}) for author {}",
                         rate, self.max_contributor_ratio, author
                     ),
@@ -241,13 +241,13 @@ mod tests {
             Evaluation::Fail {
                 policy_name,
                 dependency: dep,
-                message,
+                reason,
                 fail_score,
             } => {
                 assert_eq!(policy_name, "contributors_ratio");
                 assert_eq!(dep, dependency);
                 assert_eq!(
-                    message,
+                    reason,
                     "the rate of contribution is too high (1 > 0.9) for author SomeAuthor"
                 );
                 assert!((fail_score - 1.111_111_111_111_111_2).abs() < f64::EPSILON);

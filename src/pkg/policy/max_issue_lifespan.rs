@@ -27,7 +27,7 @@ impl Policy for MaxIssueLifespan {
             } else {
                 issue_lifespan / self.max_issue_lifespan
             };
-            Ok(Evaluation::Fail{policy_name: "max_issue_lifespan".to_string(), dependency: dependency.clone(), message: format!("the issue lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan), fail_score})
+            Ok(Evaluation::Fail{policy_name: "max_issue_lifespan".to_string(), dependency: dependency.clone(), reason: format!("the issue lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan), fail_score})
         } else {
             Ok(Evaluation::Pass {
                 policy_name: "max_issue_lifespan".to_string(),
@@ -99,12 +99,12 @@ mod tests {
             Evaluation::Fail {
                 policy_name,
                 dependency: dep,
-                message,
+                reason,
                 fail_score,
             } => {
                 assert_eq!(policy_name, "max_issue_lifespan");
                 assert_eq!(dep, dependency());
-                assert_eq!(message, "the issue lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds");
+                assert_eq!(reason, "the issue lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds");
                 assert!((fail_score - 1.02).abs() < f64::EPSILON);
             }
             Evaluation::Pass { .. } => {

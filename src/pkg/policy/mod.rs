@@ -75,7 +75,7 @@ pub enum Evaluation {
     Fail {
         policy_name: String,
         dependency: Dependency,
-        message: String,
+        reason: String,
         fail_score: f64,
     },
 }

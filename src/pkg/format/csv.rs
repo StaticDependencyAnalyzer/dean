@@ -95,8 +95,8 @@ where
                         Evaluation::Pass { .. } => {
                             row.push("OK".to_string());
                         }
-                        Evaluation::Fail { message, .. } => {
-                            row.push(message.clone());
+                        Evaluation::Fail { reason, .. } => {
+                            row.push(reason.clone());
                         }
                     }
                 } else {
@@ -151,7 +151,7 @@ mod tests {
                         name: "some_repo".to_string(),
                     },
                 },
-                message: "failed because a reason".into(),
+                reason: "failed because a reason".into(),
                 fail_score: 1.5,
             },
             Evaluation::Fail {
@@ -165,7 +165,7 @@ mod tests {
                         name: "some_repo".to_string(),
                     },
                 },
-                message: "failed because a reason".into(),
+                reason: "failed because a reason".into(),
                 fail_score: 1.0,
             },
         ];
