@@ -9,10 +9,10 @@ use crate::{Evaluation, Result};
 
 pub mod config;
 pub mod engine;
+pub mod format;
 pub mod package_manager;
 pub mod policy;
 pub mod recognizer;
-pub mod format;
 
 #[cfg_attr(test, mockall::automock)]
 #[async_trait]
@@ -60,10 +60,10 @@ impl Repository {
     pub fn url(&self) -> Option<String> {
         match self {
             Repository::GitHub { name, organization } => {
-                Some(format!("https://github.com/{}/{}", organization, name))
+                Some(format!("https://github.com/{organization}/{name}"))
             }
             Repository::GitLab { name, organization } => {
-                Some(format!("https://gitlab.com/{}/{}", organization, name))
+                Some(format!("https://gitlab.com/{organization}/{name}"))
             }
             Repository::Raw { address } => Some(address.clone()),
             Repository::Unknown => None,

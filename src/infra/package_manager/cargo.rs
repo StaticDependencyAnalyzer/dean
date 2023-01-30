@@ -25,7 +25,7 @@ impl InfoRetriever {
     async fn make_request(&self, dependency: &str) -> Result<Map<String, Value>> {
         let result: Value = self
             .client
-            .get(&format!("https://crates.io/api/v1/crates/{}", dependency))
+            .get(&format!("https://crates.io/api/v1/crates/{dependency}"))
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
             .send().await.context("unable to request crates.io")?
             .json().await.context("unable to parse crates.io response")?;

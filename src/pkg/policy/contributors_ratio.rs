@@ -68,21 +68,21 @@ impl Policy for ContributorsRatio {
         for (rate, author) in authors_with_rate {
             if rate > self.max_contributor_ratio && self.max_contributor_ratio > 0.0 {
                 let fail_score = rate / self.max_contributor_ratio;
-                return Ok(Evaluation::Fail(
-                    "contributors_ratio".to_string(),
-                    dependency.clone(),
-                    format!(
+                return Ok(Evaluation::Fail {
+                    policy_name: "contributors_ratio".to_string(),
+                    dependency: dependency.clone(),
+                    message: format!(
                         "the rate of contribution is too high ({} > {}) for author {}",
                         rate, self.max_contributor_ratio, author
                     ),
                     fail_score,
-                ));
+                });
             }
         }
-        Ok(Evaluation::Pass(
-            "contributors_ratio".to_string(),
-            dependency.clone(),
-        ))
+        Ok(Evaluation::Pass {
+            policy_name: "contributors_ratio".to_string(),
+            dependency: dependency.clone(),
+        })
     }
 }
 
@@ -175,7 +175,10 @@ mod tests {
 
         assert_eq!(
             result.unwrap(),
-            Evaluation::Pass("contributors_ratio".to_string(), dependency.clone())
+            Evaluation::Pass {
+                policy_name: "contributors_ratio".to_string(),
+                dependency: dependency.clone()
+            }
         );
     }
     #[tokio::test]
@@ -235,17 +238,21 @@ mod tests {
         let result = contributors_ratio_policy.evaluate(&dependency).await;
 
         match result.unwrap() {
-            Evaluation::Fail(policy, dep, reason, score) => {
-                assert_eq!(policy, "contributors_ratio");
+            Evaluation::Fail {
+                policy_name,
+                dependency: dep,
+                message,
+                fail_score,
+            } => {
+                assert_eq!(policy_name, "contributors_ratio");
                 assert_eq!(dep, dependency);
                 assert_eq!(
-                    reason,
+                    message,
                     "the rate of contribution is too high (1 > 0.9) for author SomeAuthor"
                 );
-                println!("{}", score);
-                assert!((score - 1.111_111_111_111_111_2).abs() < f64::EPSILON);
+                assert!((fail_score - 1.111_111_111_111_111_2).abs() < f64::EPSILON);
             }
-            Evaluation::Pass(_, _) => {
+            Evaluation::Pass { .. } => {
                 unreachable!()
             }
         }

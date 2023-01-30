@@ -124,7 +124,9 @@ impl ContributionDataRetriever for Retriever {
             Repository::GitHub { name, organization } => Ok(self
                 .get_github_issue_lifespan(organization, name, last_issues)
                 .await),
-            Repository::GitLab { .. } | Repository::Raw { .. } => Err("not implemented contribution data retriever".into()),
+            Repository::GitLab { .. } | Repository::Raw { .. } => {
+                Err("not implemented contribution data retriever".into())
+            }
         }
     }
 

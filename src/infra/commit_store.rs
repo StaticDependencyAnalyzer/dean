@@ -193,7 +193,7 @@ impl Sqlite {
     pub fn init(&self) -> Result<(), Box<dyn Error>> {
         self.db
             .lock()
-            .map_err(|e| format!("unable to lock the database: {}", e))?
+            .map_err(|e| format!("unable to lock the database: {e}"))?
             .execute_batch(
                 r#"
 CREATE TABLE IF NOT EXISTS commitstore_tags (

@@ -30,9 +30,7 @@ where
         let contents = self.contents_from_reader().await?;
         let result: Value = toml::from_slice(&contents)?;
 
-        let packages = result
-            .get("package")
-            .context("no package section found")?;
+        let packages = result.get("package").context("no package section found")?;
 
         let package_list = packages
             .as_array()

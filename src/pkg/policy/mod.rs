@@ -68,27 +68,37 @@ pub trait Clock: Sync + Send {
 
 #[derive(Clone, Debug)]
 pub enum Evaluation {
-    Pass(String, Dependency),
-    Fail(String, Dependency, String, f64),
+    Pass {
+        policy_name: String,
+        dependency: Dependency,
+    },
+    Fail {
+        policy_name: String,
+        dependency: Dependency,
+        message: String,
+        fail_score: f64,
+    },
 }
 
 impl Evaluation {
     pub fn policy(&self) -> &str {
         match self {
-            Evaluation::Fail(policy, _, _, _) | Evaluation::Pass(policy, _) => policy,
+            Evaluation::Fail { policy_name, .. } | Evaluation::Pass { policy_name, .. } => {
+                policy_name
+            }
         }
     }
 
     pub fn dependency(&self) -> &Dependency {
         match self {
-            Evaluation::Fail(_, dependency, _, _) | Evaluation::Pass(_, dependency) => dependency,
+            Evaluation::Fail { dependency, .. } | Evaluation::Pass { dependency, .. } => dependency,
         }
     }
 
     pub fn fail_score(&self) -> f64 {
         match self {
-            Evaluation::Pass(_, _) => 0.0,
-            Evaluation::Fail(_, _, _, score) => *score,
+            Evaluation::Pass { .. } => 0.0,
+            Evaluation::Fail { fail_score, .. } => *fail_score,
         }
     }
 }
@@ -96,10 +106,26 @@ impl Evaluation {
 impl PartialEq for Evaluation {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Evaluation::Fail(policy, _, _, score), Evaluation::Fail(policy2, _, _, score2)) => {
-                policy == policy2 && score == score2
-            }
-            (Evaluation::Pass(policy, _), Evaluation::Pass(policy2, _)) => policy == policy2,
+            (
+                Evaluation::Fail {
+                    policy_name: name1,
+                    fail_score: score1,
+                    ..
+                },
+                Evaluation::Fail {
+                    policy_name: name2,
+                    fail_score: score2,
+                    ..
+                },
+            ) => name1 == name2 && score1 == score2,
+            (
+                Evaluation::Pass {
+                    policy_name: name1, ..
+                },
+                Evaluation::Pass {
+                    policy_name: name2, ..
+                },
+            ) => name1 == name2,
             _ => false,
         }
     }

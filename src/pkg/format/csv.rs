@@ -92,11 +92,11 @@ where
 
                 if let Some(evaluation) = policy_evaluation_for_dependency {
                     match evaluation {
-                        Evaluation::Pass(_, _) => {
+                        Evaluation::Pass { .. } => {
                             row.push("OK".to_string());
                         }
-                        Evaluation::Fail(_, _, reason, _) => {
-                            row.push(reason.clone());
+                        Evaluation::Fail { message, .. } => {
+                            row.push(message.clone());
                         }
                     }
                 } else {
@@ -128,9 +128,9 @@ mod tests {
         let mut reporter = Reporter::new(buffer.clone());
 
         let evaluations = vec![
-            Evaluation::Pass(
-                "policy1".to_string(),
-                Dependency {
+            Evaluation::Pass {
+                policy_name: "policy1".to_string(),
+                dependency: Dependency {
                     name: "some_dep1".to_string(),
                     version: "1.2.3".to_string(),
                     latest_version: Some("1.2.3".to_string()),
@@ -139,10 +139,10 @@ mod tests {
                         name: "some_repo".to_string(),
                     },
                 },
-            ),
-            Evaluation::Fail(
-                "policy1".to_string(),
-                Dependency {
+            },
+            Evaluation::Fail {
+                policy_name: "policy1".to_string(),
+                dependency: Dependency {
                     name: "some_dep2".to_string(),
                     version: "2.3.4".to_string(),
                     latest_version: Some("2.4.5".to_string()),
@@ -151,12 +151,12 @@ mod tests {
                         name: "some_repo".to_string(),
                     },
                 },
-                "failed because a reason".into(),
-                1.5,
-            ),
-            Evaluation::Fail(
-                "policy2".to_string(),
-                Dependency {
+                message: "failed because a reason".into(),
+                fail_score: 1.5,
+            },
+            Evaluation::Fail {
+                policy_name: "policy2".to_string(),
+                dependency: Dependency {
                     name: "some_dep2".to_string(),
                     version: "2.3.4".to_string(),
                     latest_version: Some("2.4.5".to_string()),
@@ -165,9 +165,9 @@ mod tests {
                         name: "some_repo".to_string(),
                     },
                 },
-                "failed because a reason".into(),
-                1.0,
-            ),
+                message: "failed because a reason".into(),
+                fail_score: 1.0,
+            },
         ];
 
         reporter.report_results(evaluations).await.unwrap();
