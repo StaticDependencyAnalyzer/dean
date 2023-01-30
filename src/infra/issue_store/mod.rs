@@ -1,5 +1,8 @@
 mod sqlite;
+pub use sqlite::Sqlite;
+
 #[cfg(feature = "experimental-surrealdb")]
 mod surrealdb;
 
-pub use sqlite::Sqlite;
+#[cfg(feature = "experimental-surrealdb")]
+pub use self::surrealdb::SurrealDB;

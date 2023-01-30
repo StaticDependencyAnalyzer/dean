@@ -32,6 +32,26 @@ impl<T> Lazy<T> {
     }
 }
 
+pub struct AsyncLazy<T> {
+    hold: tokio::sync::OnceCell<T>,
+}
+
+impl<T> AsyncLazy<T> {
+    pub fn new() -> Self {
+        Self {
+            hold: tokio::sync::OnceCell::new(),
+        }
+    }
+
+    pub async fn async_get<F, Fut>(&self, f: F) -> &T
+    where
+        F: FnOnce() -> Fut,
+        Fut: std::future::Future<Output = T>,
+    {
+        self.hold.get_or_init(f).await
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -43,6 +63,17 @@ mod tests {
         lazy.get(|| 5_u8);
         lazy.get(|| unreachable!());
         let value = lazy.get(|| unreachable!());
+
+        assert_eq!(value, &5_u8);
+    }
+
+    #[tokio::test]
+    async fn it_builds_once_and_only_once_asynchronously() {
+        let lazy_async = AsyncLazy::<u8>::new();
+
+        lazy_async.async_get(|| async { 5_u8 }).await;
+        lazy_async.async_get(|| async { unreachable!() }).await;
+        let value = lazy_async.async_get(|| async { unreachable!() }).await;
 
         assert_eq!(value, &5_u8);
     }

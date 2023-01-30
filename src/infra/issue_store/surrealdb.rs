@@ -14,13 +14,15 @@ use surrealdb::{sql, Surreal};
 
 use crate::infra::cached_issue_client::IssueStore;
 
-struct SurrealDB {
+pub struct SurrealDB {
     client: Surreal<Any>,
 }
 
 impl SurrealDB {
-    fn new(client: Surreal<Any>) -> Self {
-        Self { client }
+    pub fn new(client: impl Into<Surreal<Any>>) -> Self {
+        Self {
+            client: client.into(),
+        }
     }
 }
 
