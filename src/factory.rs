@@ -17,8 +17,8 @@ use crate::infra::repo_contribution;
 use crate::infra::{commit_store, issue_store};
 use crate::lazy::Lazy;
 use crate::pkg::config::{Config, Policies};
-use crate::pkg::format::csv::Reporter;
 use crate::pkg::engine::{ExecutionConfig, PolicyExecutor};
+use crate::pkg::format::csv::Reporter;
 use crate::pkg::package_manager::{cargo, npm, yarn};
 use crate::pkg::policy::{
     CommitRetriever, ContributionDataRetriever, ContributorsRatio, MaxIssueLifespan,
@@ -81,7 +81,7 @@ impl Factory {
                 repository_retriever.clone(),
                 policy.min_number_of_releases,
                 Duration::from_secs(policy.days * DAYS_TO_SECONDS),
-                Box::new(Clock::default()),
+                Box::new(Clock {}),
             )));
         }
         if let Some(policy) = &config_policies.contributors_ratio {
@@ -163,12 +163,8 @@ impl Factory {
     }
 
     fn package_manager(lock_file: &str) -> PackageManager {
-        PackageManager::from_filename(lock_file).unwrap_or_else(|| {
-            panic!(
-                "unable to determine package manager for file: {}",
-                lock_file
-            )
-        })
+        PackageManager::from_filename(lock_file)
+            .unwrap_or_else(|| panic!("unable to determine package manager for file: {lock_file}"))
     }
 
     fn repository_retriever(&self) -> Arc<dyn CommitRetriever> {

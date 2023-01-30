@@ -12,8 +12,8 @@ pub type Result<T, E = anyhow::Error> = core::result::Result<T, E>;
 use std::rc::Rc;
 use std::str::FromStr;
 use std::sync::Arc;
-use anyhow::Context;
 
+use anyhow::Context;
 use futures::future::join_all;
 use log::{error, info, warn, LevelFilter};
 use tokio::fs::File;
@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     let mut factory = Factory::new(config.clone());
 
     match &args.command {
-        Commands::Scan { lock_file} => {
+        Commands::Scan { lock_file } => {
             scan_lock_file(&mut factory, lock_file).await?;
         }
         Commands::Config { command } => match command {
@@ -69,16 +69,24 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
 
             for evaluation in evaluations.as_ref().unwrap() {
                 match evaluation {
-                    Evaluation::Pass(policy, dep) => {
+                    Evaluation::Pass {
+                        policy_name,
+                        dependency,
+                    } => {
                         info!(
                         "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is okay",
-                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy
+                        dependency.name, dependency.version, dependency.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dependency.repository, policy_name
                     );
                     }
-                    Evaluation::Fail(policy, dep, reason, score) => {
+                    Evaluation::Fail {
+                        policy_name,
+                        dependency,
+                        message,
+                        fail_score,
+                    } => {
                         warn!(
                         "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is not okay: {} (score: {})",
-                        dep.name, dep.version, dep.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dep.repository, policy, reason, score,
+                        dependency.name, dependency.version, dependency.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dependency.repository, policy_name, message, fail_score,
                     );
                     }
                 }

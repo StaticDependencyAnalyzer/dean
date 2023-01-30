@@ -27,16 +27,17 @@ impl Policy for MaxPullRequestLifespan {
             } else {
                 issue_lifespan / self.max_issue_lifespan
             };
-            Ok(Evaluation::Fail(
-                "max_pull_request_lifespan".to_string(),
-                dependency.clone(),
-                format!("the pull request lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan),
-                fail_score))
+            Ok(Evaluation::Fail{
+                policy_name: "max_pull_request_lifespan".to_string(),
+                dependency: dependency.clone(),
+                message: format!("the pull request lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan),  
+                fail_score,
+            })
         } else {
-            Ok(Evaluation::Pass(
-                "max_pull_request_lifespan".to_string(),
-                dependency.clone(),
-            ))
+            Ok(Evaluation::Pass {
+                policy_name: "max_pull_request_lifespan".to_string(),
+                dependency: dependency.clone(),
+            })
         }
     }
 }
@@ -80,7 +81,10 @@ mod tests {
         let evaluation = issue_lifespan.evaluate(&dependency()).await;
         assert_eq!(
             evaluation.unwrap(),
-            Evaluation::Pass("max_pull_request_lifespan".to_string(), dependency())
+            Evaluation::Pass {
+                policy_name: "max_pull_request_lifespan".to_string(),
+                dependency: dependency(),
+            }
         );
     }
 
@@ -100,16 +104,21 @@ mod tests {
 
         let evaluation = issue_lifespan.evaluate(&dependency()).await;
         match evaluation.unwrap() {
-            Evaluation::Fail(policy, dep, reason, score) => {
-                assert_eq!(policy, "max_pull_request_lifespan".to_string());
+            Evaluation::Fail {
+                policy_name,
+                dependency: dep,
+                message,
+                fail_score,
+            } => {
+                assert_eq!(policy_name, "max_pull_request_lifespan".to_string());
                 assert_eq!(dep, dependency());
                 assert_eq!(
-                    reason,
+                    message,
                     format!("the pull request lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds")
                 );
-                assert!((score - 1.02).abs() < f64::EPSILON);
+                assert!((fail_score - 1.02).abs() < f64::EPSILON);
             }
-            Evaluation::Pass(_, _) => {
+            Evaluation::Pass { .. } => {
                 unreachable!()
             }
         }

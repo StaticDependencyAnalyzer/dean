@@ -116,7 +116,9 @@ impl IssuePullRequestStream {
     }
 }
 
-async fn fetch_value_from_stream(mut stream: IssuePullRequestStream) -> Option<(Value, IssuePullRequestStream)> {
+async fn fetch_value_from_stream(
+    mut stream: IssuePullRequestStream,
+) -> Option<(Value, IssuePullRequestStream)> {
     trace!(target: "dean::github_client::func", "Polling stream");
     if stream.buffer.is_empty() {
         trace!(target: "dean::github_client::func", "Buffer is empty, updating it");
@@ -149,8 +151,8 @@ impl IssueClient for Client {
         let stream = self.all_issues_iterator(organization, repo);
 
         let values_from_the_stream = futures::stream::unfold(stream, fetch_value_from_stream);
-        let issues =
-            values_from_the_stream.filter(|value| futures::future::ready(value.get("pull_request").is_none()));
+        let issues = values_from_the_stream
+            .filter(|value| futures::future::ready(value.get("pull_request").is_none()));
         Box::new(Box::pin(issues))
     }
 
@@ -162,8 +164,8 @@ impl IssueClient for Client {
         let stream = self.all_issues_iterator(organization, repo);
 
         let values_from_the_stream = futures::stream::unfold(stream, fetch_value_from_stream);
-        let pull_requests =
-            values_from_the_stream.filter(|value| futures::future::ready(value.get("pull_request").is_some()));
+        let pull_requests = values_from_the_stream
+            .filter(|value| futures::future::ready(value.get("pull_request").is_some()));
         Box::new(Box::pin(pull_requests))
     }
 }
@@ -183,8 +185,7 @@ impl Client {
         IssuePullRequestStream {
             client: self.client.clone(),
             next_page: Some(format!(
-                "https://api.github.com/repos/{}/{}/issues?state=all&direction=asc&sort=created&per_page=100&page=1",
-                organization, repo
+                "https://api.github.com/repos/{organization}/{repo}/issues?state=all&direction=asc&sort=created&per_page=100&page=1"
             )),
             buffer: vec![],
             auth: self.auth.clone(),

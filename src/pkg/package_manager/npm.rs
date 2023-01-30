@@ -62,32 +62,33 @@ where
                 }
             });
 
+        let futures = deps
+            .map(|(name, version)| {
+                let retriever = self.npm_info_retriever.clone();
 
-        let futures = deps.map(|(name, version)| {
-            let retriever = self.npm_info_retriever.clone();
-
-            tokio::spawn(async move {
-                let (latest_version, repository) = futures::future::join(
-                    retriever.latest_version(&name),
-                    retriever.repository(&name),
-                )
+                tokio::spawn(async move {
+                    let (latest_version, repository) = futures::future::join(
+                        retriever.latest_version(&name),
+                        retriever.repository(&name),
+                    )
                     .await;
 
-                Dependency {
-                    name: name.clone(),
-                    version: version.clone(),
-                    latest_version: latest_version.ok(),
-                    repository: repository.unwrap_or(Repository::Unknown),
-                }
+                    Dependency {
+                        name: name.clone(),
+                        version: version.clone(),
+                        latest_version: latest_version.ok(),
+                        repository: repository.unwrap_or(Repository::Unknown),
+                    }
+                })
             })
-        })
             .collect_vec();
 
-        let unfold = futures::stream::unfold(futures, | mut name_and_versions_to_retrieve | async move {
-            let next = name_and_versions_to_retrieve.pop();
-            let dependency = next?.await.ok()?;
-            Some((dependency, name_and_versions_to_retrieve))
-        });
+        let unfold =
+            futures::stream::unfold(futures, |mut name_and_versions_to_retrieve| async move {
+                let next = name_and_versions_to_retrieve.pop();
+                let dependency = next?.await.ok()?;
+                Some((dependency, name_and_versions_to_retrieve))
+            });
 
         Ok(Box::new(Box::pin(unfold)))
     }

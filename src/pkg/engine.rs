@@ -94,20 +94,20 @@ mod tests {
             {
                 let mut policy = mock_policy();
                 policy.expect_evaluate().once().return_once(|dep| {
-                    Ok(Evaluation::Pass(
-                        "some_policy_name".to_string(),
-                        dep.clone(),
-                    ))
+                    Ok(Evaluation::Pass {
+                        policy_name: "some_policy_name".to_string(),
+                        dependency: dep.clone(),
+                    })
                 });
                 policy as Box<dyn Policy>
             },
             {
                 let mut policy = mock_policy();
                 policy.expect_evaluate().once().return_once(|dep| {
-                    Ok(Evaluation::Pass(
-                        "some_policy_name2".to_string(),
-                        dep.clone(),
-                    ))
+                    Ok(Evaluation::Pass {
+                        policy_name: "some_policy_name2".to_string(),
+                        dependency: dep.clone(),
+                    })
                 });
                 policy as Box<dyn Policy>
             },
@@ -120,8 +120,14 @@ mod tests {
         assert_eq!(
             evaluation,
             &[
-                Evaluation::Pass("some_policy_name".to_string(), dependency()),
-                Evaluation::Pass("some_policy_name2".to_string(), dependency()),
+                Evaluation::Pass {
+                    policy_name: "some_policy_name".to_string(),
+                    dependency: dependency()
+                },
+                Evaluation::Pass {
+                    policy_name: "some_policy_name2".to_string(),
+                    dependency: dependency()
+                },
             ]
         );
     }
@@ -132,22 +138,22 @@ mod tests {
             {
                 let mut policy = mock_policy();
                 policy.expect_evaluate().once().return_once(|dep| {
-                    Ok(Evaluation::Fail(
-                        "some_policy_name".to_string(),
-                        dep.clone(),
-                        "some_reason".into(),
-                        1.0,
-                    ))
+                    Ok(Evaluation::Fail {
+                        policy_name: "some_policy_name".to_string(),
+                        dependency: dep.clone(),
+                        message: "some_reason".into(),
+                        fail_score: 1.0,
+                    })
                 });
                 policy as Box<dyn Policy>
             },
             {
                 let mut policy = mock_policy();
                 policy.expect_evaluate().once().return_once(|dep| {
-                    Ok(Evaluation::Pass(
-                        "some_policy_name2".to_string(),
-                        dep.clone(),
-                    ))
+                    Ok(Evaluation::Pass {
+                        policy_name: "some_policy_name2".to_string(),
+                        dependency: dep.clone(),
+                    })
                 });
                 policy as Box<dyn Policy>
             },
@@ -160,22 +166,30 @@ mod tests {
 
         assert_eq!(evaluation.len(), 2);
         match evaluation.get(0).unwrap() {
-            Evaluation::Fail(policy, dep, reason, score) => {
-                assert_eq!(policy, "some_policy_name");
+            Evaluation::Fail {
+                policy_name,
+                dependency: dep,
+                message,
+                fail_score,
+            } => {
+                assert_eq!(policy_name, "some_policy_name");
                 assert_eq!(dep, &dependency());
-                assert_eq!(reason, "some_reason");
-                assert!((score - 1.0).abs() < f64::EPSILON);
+                assert_eq!(message, "some_reason");
+                assert!((fail_score - 1.0).abs() < f64::EPSILON);
             }
-            Evaluation::Pass(_, _) => {
+            Evaluation::Pass { .. } => {
                 unreachable!()
             }
         }
         match evaluation.get(1).unwrap() {
-            Evaluation::Pass(policy, dep) => {
+            Evaluation::Pass {
+                policy_name: policy,
+                dependency: dep,
+            } => {
                 assert_eq!(policy, "some_policy_name2");
                 assert_eq!(dep, &dependency());
             }
-            Evaluation::Fail(_, _, _, _) => {
+            Evaluation::Fail { .. } => {
                 unreachable!()
             }
         };
@@ -187,10 +201,10 @@ mod tests {
         let matching_policies = vec![{
             let mut policy = mock_policy();
             policy.expect_evaluate().once().return_once(|dep| {
-                Ok(Evaluation::Pass(
-                    "some_policy_name2".to_string(),
-                    dep.clone(),
-                ))
+                Ok(Evaluation::Pass {
+                    policy_name: "some_policy_name2".to_string(),
+                    dependency: dep.clone(),
+                })
             });
             policy as Box<dyn Policy>
         }];
@@ -205,10 +219,10 @@ mod tests {
 
         assert_eq!(
             evaluation,
-            &[Evaluation::Pass(
-                "some_policy_name2".to_string(),
-                dependency()
-            )]
+            &[Evaluation::Pass {
+                policy_name: "some_policy_name2".to_string(),
+                dependency: dependency()
+            }]
         );
     }
 
@@ -217,12 +231,12 @@ mod tests {
         let default_policies = vec![{
             let mut policy = mock_policy();
             policy.expect_evaluate().once().return_once(|dep| {
-                Ok(Evaluation::Fail(
-                    "some_policy_name".to_string(),
-                    dep.clone(),
-                    "some_reason".into(),
-                    1.0,
-                ))
+                Ok(Evaluation::Fail {
+                    policy_name: "some_policy_name".to_string(),
+                    dependency: dep.clone(),
+                    message: "some_reason".into(),
+                    fail_score: 1.0,
+                })
             });
             policy as Box<dyn Policy>
         }];
@@ -241,13 +255,18 @@ mod tests {
 
         assert_eq!(evaluation.len(), 1);
         match evaluation.get(0).unwrap() {
-            Evaluation::Fail(policy, dep, reason, score) => {
-                assert_eq!(policy, "some_policy_name");
+            Evaluation::Fail {
+                policy_name,
+                dependency: dep,
+                message,
+                fail_score,
+            } => {
+                assert_eq!(policy_name, "some_policy_name");
                 assert_eq!(dep, &dependency());
-                assert_eq!(reason, "some_reason");
-                assert!((score - 1.0) < f64::EPSILON);
+                assert_eq!(message, "some_reason");
+                assert!((fail_score - 1.0) < f64::EPSILON);
             }
-            Evaluation::Pass(_, _) => {
+            Evaluation::Pass { .. } => {
                 unreachable!()
             }
         }
@@ -260,10 +279,10 @@ mod tests {
         let matching_policies = vec![{
             let mut policy = mock_policy();
             policy.expect_evaluate().once().return_once(|dep| {
-                Ok(Evaluation::Pass(
-                    "some_policy_name2".to_string(),
-                    dep.clone(),
-                ))
+                Ok(Evaluation::Pass {
+                    policy_name: "some_policy_name2".to_string(),
+                    dependency: dep.clone(),
+                })
             });
             policy as Box<dyn Policy>
         }];
@@ -277,10 +296,10 @@ mod tests {
 
         assert_eq!(
             evaluation,
-            &[Evaluation::Pass(
-                "some_policy_name2".to_string(),
-                dependency()
-            )]
+            &[Evaluation::Pass {
+                policy_name: "some_policy_name2".to_string(),
+                dependency: dependency()
+            }]
         );
     }
 

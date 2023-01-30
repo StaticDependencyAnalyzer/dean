@@ -286,9 +286,6 @@ mod tests {
             .collect::<Vec<_>>()
             .await;
 
-        println!("{:?}", first_call_pull_requests);
-        println!("{:?}", second_call_pull_requests);
-        println!("{:?}", &pull_requests_in_repo());
         assert!(first_call_pull_requests.eq(&pull_requests_in_repo()));
         assert!(second_call_pull_requests.eq(&pull_requests_in_repo()));
     }

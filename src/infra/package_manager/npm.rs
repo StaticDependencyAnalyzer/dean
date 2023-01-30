@@ -28,7 +28,7 @@ impl crate::pkg::InfoRetriever for InfoRetriever {
     async fn latest_version(&self, package_name: &str) -> Result<String> {
         let response: Value = self
             .client
-            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())
+            .get(format!("https://registry.npmjs.org/{package_name}").as_str())
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
             .send().await.context("unable to request npmjs.org")?
             .json().await.context("unable to parse npmjs.org response")?;
@@ -42,7 +42,7 @@ impl crate::pkg::InfoRetriever for InfoRetriever {
     async fn repository(&self, package_name: &str) -> Result<Repository> {
         let response: Value = self
             .client
-            .get(format!("https://registry.npmjs.org/{}", package_name).as_str())
+            .get(format!("https://registry.npmjs.org/{package_name}").as_str())
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/80.0.3987.149 Safari/537.36")
             .send().await.context("unable to request npmjs.org")?
             .json().await.context("unable to parse npmjs.org response")?;
