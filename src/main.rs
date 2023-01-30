@@ -81,12 +81,12 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
                     Evaluation::Fail {
                         policy_name,
                         dependency,
-                        message,
+                        reason,
                         fail_score,
                     } => {
                         warn!(
                         "dependency [name={}, version={}, latest version={}, repository={}, policy={}] is not okay: {} (score: {})",
-                        dependency.name, dependency.version, dependency.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dependency.repository, policy_name, message, fail_score,
+                        dependency.name, dependency.version, dependency.latest_version.as_ref().unwrap_or(&"unknown".to_string()), dependency.repository, policy_name, reason, fail_score,
                     );
                     }
                 }

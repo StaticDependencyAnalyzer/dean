@@ -30,7 +30,7 @@ impl Policy for MaxPullRequestLifespan {
             Ok(Evaluation::Fail{
                 policy_name: "max_pull_request_lifespan".to_string(),
                 dependency: dependency.clone(),
-                message: format!("the pull request lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan),  
+                reason: format!("the pull request lifespan is {} seconds, which is greater than the maximum allowed lifespan of {} seconds", issue_lifespan, self.max_issue_lifespan),  
                 fail_score,
             })
         } else {
@@ -107,13 +107,13 @@ mod tests {
             Evaluation::Fail {
                 policy_name,
                 dependency: dep,
-                message,
+                reason,
                 fail_score,
             } => {
                 assert_eq!(policy_name, "max_pull_request_lifespan".to_string());
                 assert_eq!(dep, dependency());
                 assert_eq!(
-                    message,
+                    reason,
                     format!("the pull request lifespan is 102 seconds, which is greater than the maximum allowed lifespan of 100 seconds")
                 );
                 assert!((fail_score - 1.02).abs() < f64::EPSILON);
