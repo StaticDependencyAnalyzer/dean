@@ -34,7 +34,7 @@ log = "0.4.14"
 simple_logger = "2.1.0"
 git2 = { version = "0.16.0", features = ["vendored-libgit2", "vendored-openssl"] }
 tempfile = "3.3.0"
-anyhow = "1.0.56"
+anyhow = { version = "1.0.56", features = ["backtrace"] }
 itertools = "0.10.3"
 serde_yaml = "0.9.4"
 dirs-next = "2.0.0"
@@ -48,7 +48,7 @@ tokio-stream = "0.1.11"
 moka = { version = "0.9.4", features = ["future"] }
 async-recursion = "1.0.0"
 futures = "0.3.25"
-surrealdb = { git = "https://github.com/surrealdb/surrealdb", branch = "main",features=["kv-mem"], optional = true }
+surrealdb = { git = "https://github.com/surrealdb/surrealdb", branch = "main",features=["kv-mem", "kv-rocksdb"], optional = true }
 
 [dev-dependencies]
 mockall = "0.11.0"

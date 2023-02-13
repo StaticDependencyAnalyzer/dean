@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use async_trait::async_trait;
 use futures::Stream;
 use itertools::Itertools;
@@ -56,30 +57,40 @@ where
                     }
                 });
 
-        let dependency_info_tuples = dependency_lines_grouped.into_iter().map(|lines| {
-            let dependency_line: String = lines.first().unwrap().replace('\"', "");
-            let mut dependency_name = dependency_line.split_once('@').unwrap().0.to_owned();
-            if dependency_name.is_empty() {
-                dependency_name = format!(
-                    "@{}",
-                    dependency_line
-                        .replacen('@', "", 1)
-                        .split_once('@')
-                        .unwrap()
-                        .0
-                );
-            }
+        let dependency_info_tuples = dependency_lines_grouped
+            .map(|lines| {
+                let dependency_line: String = lines
+                    .first()
+                    .context("there was no first line")?
+                    .replace('\"', "");
+                let mut dependency_name = dependency_line
+                    .split_once('@')
+                    .context("unable to split dependency line by @")?
+                    .0
+                    .to_owned();
+                if dependency_name.is_empty() {
+                    dependency_name = format!(
+                        "@{}",
+                        dependency_line
+                            .replacen('@', "", 1)
+                            .split_once('@')
+                            .context("unable to split the dependency line by @")?
+                            .0
+                    );
+                }
 
-            let dependency_version = lines.get(1).unwrap();
-            let dependency_version: String = dependency_version
-                .trim()
-                .split_once(' ')
-                .unwrap()
-                .1
-                .replace('\"', "");
+                let dependency_version = lines.get(1).context("no lines to retrieve")?;
+                let dependency_version: String = dependency_version
+                    .trim()
+                    .split_once(' ')
+                    .context("unable to split by space the dependency version")?
+                    .1
+                    .replace('\"', "");
 
-            (dependency_name, dependency_version)
-        });
+                Ok((dependency_name, dependency_version))
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter();
 
         let futures = dependency_info_tuples
             .map(|(name, version)| {

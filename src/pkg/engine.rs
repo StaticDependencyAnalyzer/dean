@@ -1,6 +1,7 @@
 use std::cmp::Ordering;
 use std::sync::Arc;
 
+use anyhow::Context;
 use futures::future::join_all;
 use itertools::Itertools;
 
@@ -73,8 +74,9 @@ impl PolicyExecutor {
 
         let evaluations_resolved = join_all(evaluations).await;
         let mut evaluations = vec![];
-        for evaluation in &evaluations_resolved {
-            evaluations.push(evaluation.as_ref().unwrap().as_ref().unwrap().clone());
+        for evaluation in evaluations_resolved {
+            let evaluation = evaluation.context("unable to retrieve evaluation").unwrap();
+            evaluations.push(evaluation.as_ref().unwrap().clone());
         }
 
         Ok(evaluations)

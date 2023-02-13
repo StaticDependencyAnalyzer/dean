@@ -15,7 +15,7 @@ use crate::infra::package_manager::cargo::InfoRetriever as CargoInfoRetriever;
 use crate::infra::package_manager::npm::InfoRetriever as NpmInfoRetriever;
 use crate::infra::repo_contribution;
 use crate::infra::{commit_store, issue_store};
-use crate::lazy::Lazy;
+use crate::lazy::{AsyncLazy, Lazy};
 use crate::pkg::config::{Config, Policies};
 use crate::pkg::engine::{ExecutionConfig, PolicyExecutor};
 use crate::pkg::format::csv::Reporter;
@@ -34,10 +34,10 @@ pub struct Factory {
     info_retriever: Lazy<Arc<dyn InfoRetriever>>,
     http_client: Lazy<Arc<reqwest::Client>>,
     repository_retriever: Lazy<Arc<dyn CommitRetriever>>,
-    contribution_retriever: Lazy<Arc<dyn ContributionDataRetriever>>,
+    contribution_retriever: AsyncLazy<Arc<dyn ContributionDataRetriever>>,
     github_client: Lazy<Arc<github::Client>>,
     commit_store: Lazy<Arc<dyn CommitStore>>,
-    issue_store: Lazy<Arc<dyn IssueStore>>,
+    issue_store: AsyncLazy<Arc<dyn IssueStore>>,
 }
 
 const DAYS_TO_SECONDS: u64 = 86400;
@@ -73,7 +73,7 @@ impl Factory {
     }
 
     #[allow(clippy::cast_precision_loss)]
-    fn config_policies_to_vector(&self, config_policies: &Policies) -> Vec<Box<dyn Policy>> {
+    async fn config_policies_to_vector(&self, config_policies: &Policies) -> Vec<Box<dyn Policy>> {
         let repository_retriever = self.repository_retriever();
         let mut policies: Vec<Box<dyn Policy>> = Vec::new();
 
@@ -94,14 +94,14 @@ impl Factory {
         }
         if let Some(policy) = &config_policies.max_issue_lifespan {
             policies.push(Box::new(MaxIssueLifespan::new(
-                self.contribution_retriever(),
+                self.contribution_retriever().await,
                 policy.max_lifespan_in_seconds as f64,
                 policy.last_issues,
             )));
         }
         if let Some(policy) = &config_policies.max_pull_request_lifespan {
             policies.push(Box::new(MaxPullRequestLifespan::new(
-                self.contribution_retriever(),
+                self.contribution_retriever().await,
                 policy.max_lifespan_in_seconds as f64,
                 policy.last_pull_requests,
             )));
@@ -110,17 +110,20 @@ impl Factory {
         policies
     }
 
-    fn execution_configs(&self) -> Result<Vec<ExecutionConfig>> {
+    async fn execution_configs(&self) -> Result<Vec<ExecutionConfig>> {
         let mut execution_configs = vec![];
 
         for dependency_config in &self.config.dependency_config {
             execution_configs.push(ExecutionConfig::new(
-                self.config_policies_to_vector(&dependency_config.policies),
+                self.config_policies_to_vector(&dependency_config.policies)
+                    .await,
                 Some(&dependency_config.name),
             )?);
         }
 
-        let policies = self.config_policies_to_vector(&self.config.default_policies);
+        let policies = self
+            .config_policies_to_vector(&self.config.default_policies)
+            .await;
         if !policies.is_empty() {
             execution_configs.push(ExecutionConfig::new(policies, None)?);
         }
@@ -171,14 +174,17 @@ impl Factory {
             .clone()
     }
 
-    fn contribution_retriever(&self) -> Arc<dyn ContributionDataRetriever> {
+    async fn contribution_retriever(&self) -> Arc<dyn ContributionDataRetriever> {
         self.contribution_retriever
-            .get(|| {
-                let git_contributor_retriever =
-                    repo_contribution::Retriever::new(self.github_client(), self.issue_store());
+            .async_get(|| async {
+                let git_contributor_retriever = repo_contribution::Retriever::new(
+                    self.github_client(),
+                    self.issue_store().await,
+                );
 
-                Arc::new(git_contributor_retriever)
+                Arc::new(git_contributor_retriever) as Arc<dyn ContributionDataRetriever>
             })
+            .await
             .clone()
     }
 
@@ -228,8 +234,8 @@ impl Factory {
         Reporter::new(Arc::new(Mutex::new(reader)))
     }
 
-    pub fn engine(&mut self) -> Result<PolicyExecutor> {
-        Ok(PolicyExecutor::new(self.execution_configs()?))
+    pub async fn engine(&mut self) -> Result<PolicyExecutor> {
+        Ok(PolicyExecutor::new(self.execution_configs().await?))
     }
 
     fn commit_store(&self) -> Arc<dyn CommitStore> {
@@ -245,16 +251,37 @@ impl Factory {
             .clone()
     }
 
-    fn issue_store(&self) -> Arc<dyn IssueStore> {
+    async fn issue_store(&self) -> Arc<dyn IssueStore> {
         self.issue_store
-            .get(|| {
-                let connection =
-                    rusqlite::Connection::open("dean.db3").expect("unable to open dean.db3");
-                let issue_store = issue_store::Sqlite::new(std::sync::Mutex::new(connection));
-                issue_store.init().expect("unable to init issue store");
+            .async_get(|| async {
+                #[cfg(not(feature = "experimental-surrealdb"))]
+                {
+                    let connection =
+                        rusqlite::Connection::open("dean.db3").expect("unable to open dean.db3");
+                    let issue_store = issue_store::Sqlite::new(std::sync::Mutex::new(connection));
+                    issue_store.init().expect("unable to init issue store");
 
-                Arc::new(issue_store)
+                    Arc::new(issue_store) as Arc<dyn IssueStore>
+                }
+
+                #[cfg(feature = "experimental-surrealdb")]
+                {
+                    let connection = surrealdb::engine::any::connect("file://issue_store.db")
+                        .await
+                        .expect("unable to connect");
+                    connection
+                        .use_ns("ns")
+                        .use_db("db")
+                        .await
+                        .expect("unable to specify ns and db");
+                    let issue_store = issue_store::SurrealDB::new(connection)
+                        .await
+                        .expect("unable to create surrealDB client");
+
+                    Arc::new(issue_store) as Arc<dyn IssueStore>
+                }
             })
+            .await
             .clone()
     }
 }
@@ -267,10 +294,10 @@ impl Factory {
             info_retriever: Lazy::new(),
             http_client: Lazy::new(),
             repository_retriever: Lazy::new(),
-            contribution_retriever: Lazy::new(),
+            contribution_retriever: AsyncLazy::new(),
             github_client: Lazy::new(),
             commit_store: Lazy::new(),
-            issue_store: Lazy::new(),
+            issue_store: AsyncLazy::new(),
         }
     }
 }

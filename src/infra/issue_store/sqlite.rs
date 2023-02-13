@@ -11,6 +11,7 @@ pub struct Sqlite {
     connection: Arc<Mutex<rusqlite::Connection>>,
 }
 
+#[allow(unused)]
 impl Sqlite {
     pub fn new<C>(connection: C) -> Self
     where
@@ -183,7 +184,7 @@ impl IssueStore for Sqlite {
             {
                 let mut stmt = tx.prepare(
                     "INSERT OR IGNORE INTO issuestore_pullrequest (provider, organization, repo, pullrequest_body) VALUES (?, ?, ?, ?)",
-                ).unwrap();
+                )?;
                 for pr in pull_requests {
                     stmt.execute([
                         &provider,

@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 use std::error::Error;
 
+use anyhow::Context;
 use async_trait::async_trait;
 use futures::executor::block_on;
 use futures::future::ok;
@@ -19,10 +20,19 @@ pub struct SurrealDB {
 }
 
 impl SurrealDB {
-    pub fn new(client: impl Into<Surreal<Any>>) -> Self {
-        Self {
-            client: client.into(),
-        }
+    pub async fn new(client: impl Into<Surreal<Any>>) -> Result<Self, anyhow::Error> {
+        let client = client.into();
+        client
+            .health()
+            .await
+            .context("the provided client is not healthy")?;
+
+        let _: Vec<()> = client
+            .select("health_check")
+            .await
+            .context("the provided client cannot perform select statements")?;
+
+        Ok(Self { client })
     }
 }
 
@@ -57,9 +67,7 @@ impl IssueStore for SurrealDB {
             .await
             .ok()?;
 
-        let issues: Vec<Issue> = response
-            .take(0)
-            .expect("failed to take response from query, this should never happen");
+        let issues: Vec<Issue> = response.take(0).ok()?;
 
         let issues: Vec<Value> = issues.into_iter().map(|i| i.issues).flatten().collect();
 
@@ -104,14 +112,11 @@ impl IssueStore for SurrealDB {
             .await
             .ok()?;
 
-        let pull_requests: Vec<PullRequest> = response
-            .take(0)
-            .expect("failed to take response from query, this should never happen");
+        let pull_requests: Vec<PullRequest> = response.take(0).ok()?;
 
         let pull_requests: Vec<Value> = pull_requests
             .into_iter()
-            .map(|i| i.pull_requests)
-            .flatten()
+            .flat_map(|i| i.pull_requests)
             .collect();
 
         if pull_requests.is_empty() {
@@ -154,7 +159,7 @@ mod tests {
     #[tokio::test]
     async fn it_stores_and_retrieves_the_issues() {
         let client = actual_surreal_client().await;
-        let issue_store = SurrealDB::new(client);
+        let issue_store = SurrealDB::new(client).await.unwrap();
 
         issue_store
             .save_issues("github", "rust-lang", "rust", &issues_in_repo())
@@ -171,7 +176,7 @@ mod tests {
     #[tokio::test]
     async fn it_stores_and_retrieves_the_pull_requests() {
         let client = actual_surreal_client().await;
-        let issue_store = SurrealDB::new(client);
+        let issue_store = SurrealDB::new(client).await.unwrap();
 
         issue_store
             .save_pull_requests("github", "rust-lang", "rust", &pull_requests_in_repo())
@@ -188,7 +193,7 @@ mod tests {
     #[tokio::test]
     async fn if_there_are_no_issues_it_returns_none() {
         let client = actual_surreal_client().await;
-        let issue_store = SurrealDB::new(client);
+        let issue_store = SurrealDB::new(client).await.unwrap();
 
         let issues = issue_store.get_issues("github", "unknown", "unknown").await;
 
@@ -198,13 +203,37 @@ mod tests {
     #[tokio::test]
     async fn if_there_are_no_pull_requests_it_returns_none() {
         let client = actual_surreal_client().await;
-        let issue_store = SurrealDB::new(client);
+        let issue_store = SurrealDB::new(client).await.unwrap();
 
         let pull_requests = issue_store
             .get_pull_requests("github", "unknown", "unknown")
             .await;
 
         assert_eq!(pull_requests, None);
+    }
+
+    #[tokio::test]
+    async fn when_there_is_some_saved_pr_but_does_not_match_it_is_not_returned() {
+        let client = actual_surreal_client().await;
+        let issue_store = SurrealDB::new(client).await.unwrap();
+
+        issue_store
+            .save_pull_requests("gitlab", "rust-lang", "rust", &pull_requests_in_repo())
+            .await
+            .unwrap();
+        let pull_requests = issue_store
+            .get_pull_requests("github", "rust-lang", "rust")
+            .await;
+
+        assert_eq!(pull_requests, None);
+    }
+
+    #[tokio::test]
+    async fn when_the_actual_client_is_not_created_correctly_it_returns_an_error() {
+        let client = surreal_client_without_ns_and_db_configured().await;
+        let issue_store_creation = SurrealDB::new(client).await;
+
+        assert!(issue_store_creation.is_err());
     }
 
     async fn actual_surreal_client() -> Surreal<Any> {
@@ -216,6 +245,14 @@ mod tests {
             .use_db("db")
             .await
             .expect("unable to specify ns and db");
+        client
+    }
+
+    async fn surreal_client_without_ns_and_db_configured() -> Surreal<Any> {
+        let client = connect("mem://")
+            .await
+            .expect("unable to connect to surreal instance");
+
         client
     }
 

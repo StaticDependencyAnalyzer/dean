@@ -38,7 +38,11 @@ impl IssuePullRequestStream {
             return Ok(());
         }
 
-        let url = self.next_page.as_ref().unwrap().clone();
+        let url = self
+            .next_page
+            .as_ref()
+            .context("unable to retrieve the next page")?
+            .clone();
 
         debug!(target: "dean::github_client", "Fetching issues from {}", url);
         let mut request = self

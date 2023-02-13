@@ -54,7 +54,7 @@ async fn scan_lock_file(factory: &mut Factory, lock_file_name: &str) -> Result<(
     let mut reporter = Factory::result_reporter();
     let mut dependency_reader = factory.dependency_reader(lock_file, lock_file_name).await;
 
-    let engine = Arc::new(factory.engine()?);
+    let engine = Arc::new(factory.engine().await?);
 
     let mut async_results = Vec::new();
 
